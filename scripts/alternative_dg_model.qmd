@@ -46,7 +46,7 @@ df_tree_subset_with_si <- df_tree_data %>%
 
 ## Alternative Model Formulation
 
-$\Delta dbh = e^{(\beta_0 + \beta_1 log(\frac{dbh^2 + 1}{(cr * ht + 1)^{\beta_4}}) + \beta_2 \frac{bal^{\beta_5}}{dbh+2.7} + \beta_3 log( si + 4.5)) }$
+$\Delta dbh = e^{(\beta_0 + \beta_1 log(\frac{(dbh+1)^2}{(cr * ht + 1)^{\beta_4}}) + \beta_2 \frac{bal^{\beta_5}}{dbh+2.7} + \beta_3 log( si + 4.5)) }$
 
 The fit statistics for this model are:
 
