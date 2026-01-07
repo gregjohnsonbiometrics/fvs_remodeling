@@ -1,0 +1,751 @@
+---
+title: "FVS Remodel Project: Oregon Douglas-fir FIA Data -- Do Site Index and Basal Area per Acre Matter?"
+author: "David Marshall and Greg Johnson"
+date: today
+format: pdf
+editor: visual
+fig-format: png
+---
+
+```{r}
+#| label: setup_and_data
+#| message: false
+#| warning: false
+#| include: false
+
+library( dplyr )
+library( ggplot2 )
+
+reformat_nls <- function( nls_model_summary )
+{
+    mat_model <- nls_model_summary$coefficients
+    
+    df_model <- as.data.frame(mat_model)
+    colnames(df_model) <- c("Coef.", "Std. error", "t-stat.", "p")
+    
+    return( df_model )
+}
+
+
+data_path <- "F:/Projects/FVS Remodel/data/"
+
+df_tree_data <- read.csv( paste0(data_path, "OR_CHANGEdata_DF.CSV"), header=T, sep="," )
+
+   
+df_tree_subset <- df_tree_data %>% 
+    filter( !is.na(startDIA) & !is.na(startBAPA) & !is.na(startBAL) & !is.na(startCR) &
+            !is.na(endDIA) & !is.na(endBAPA) & !is.na(endBAL) & !is.na(endCR) &
+            !is.na(startGROWYR) & !is.na(endGROWYR) & endGROWYR - startGROWYR >= 5 )
+
+
+df_tree_subset_with_si <- df_tree_data %>% 
+    filter( !is.na(startDIA) & !is.na(startBAPA) & !is.na(startBAL) & !is.na(startCR) &
+            !is.na(endDIA) & !is.na(endBAPA) & !is.na(endBAL) & !is.na(endCR) &
+            !is.na(startGROWYR) & !is.na(endGROWYR) & endGROWYR - startGROWYR >= 5 &
+            !is.na( SICOND ) ) %>%
+            mutate( startCR = startCR/100, endCR = endCR/100 )
+
+
+est_dg_no_si <- function( B0, B1, B2, B3, B5, B6,  
+                          dbh0, ba0, ba1, bal0, bal1, cr0, cr1, n )
+{
+    dba <- (ba1 - ba0)/n
+    dbal <- (bal1 - bal0)/n
+    dcr <- (cr1 - cr0)/n
+    
+    cdbh <- dbh0
+    cba <- ba0
+    cbal <- bal0
+    ccr <- cr0
+
+    max_n <- max( n )
+        
+    for( i in 1:max_n )
+    {
+          dg_hat <- exp( B0 + 
+                         B1 * log(cdbh+1) + 
+                         B2 * cdbh^2 + 
+                         B3 * log((ccr+0.2)/1.2) + 
+                         B5 * cbal^2/(log(cdbh+2.7)) + 
+                         B6 * sqrt(cba) )
+          
+          cdbh <- cdbh + ifelse( i <= n, dg_hat, 0 )
+          cba <-  cba  + ifelse( i <= n, dba, 0 )
+          cbal <- cbal + ifelse( i <= n, dbal, 0 )
+          ccr <-  ccr  + ifelse( i <= n, dcr, 0 )
+    }
+    
+    return( cdbh )
+}
+
+
+est_dg_with_si <- function( B0, B1, B2, B3, B4, B5, B6,  
+                          dbh0, ba0, ba1, bal0, bal1, cr0, cr1, si, n )
+{
+    dba <- (ba1 - ba0)/n
+    dbal <- (bal1 - bal0)/n
+    dcr <- (cr1 - cr0)/n
+    
+    cdbh <- dbh0
+    cba <- ba0
+    cbal <- bal0
+    ccr <- cr0
+
+    max_n <- max( n )
+        
+    for( i in 1:max_n )
+    {
+          dg_hat <- exp( B0 + 
+                         B1 * log( cdbh+1 ) + 
+                         B2 * cdbh^2 + 
+                         B3 * log( (ccr+0.2)/1.2 ) + 
+                         B4 * log( si + 4.5 ) +
+                         B5 * cbal^2/( log(cdbh+2.7) ) + 
+                         B6 * sqrt(cba) )
+          
+          cdbh <- cdbh + ifelse( i <= n, dg_hat, 0 )
+          cba <-  cba  + ifelse( i <= n, dba, 0 )
+          cbal <- cbal + ifelse( i <= n, dbal, 0 )
+          ccr <-  ccr  + ifelse( i <= n, dcr, 0 )
+    }
+    
+    return( cdbh )
+}
+
+est_dg_no_ba <- function( B0, B1, B2, B3, B4, B5, dbh0, bal0, bal1, cr0, cr1, si, n )
+
+{
+    dbal <- (bal1 - bal0)/n
+    dcr <- (cr1 - cr0)/n
+    
+    cdbh <- dbh0
+    cbal <- bal0
+    ccr <- cr0
+
+    max_n <- max( n )
+        
+    for( i in 1:max_n )
+    {
+          dg_hat <- exp( B0 + 
+                         B1 * log( cdbh+1 ) + 
+                         B2 * cdbh^2 + 
+                         B3 * log( (ccr+0.2)/1.2 ) + 
+                         B4 * log( si + 4.5 ) +
+                         B5 * cbal^2/( log(cdbh+2.7) ) ) 
+          
+          cdbh <- cdbh + ifelse( i <= n, dg_hat, 0 )
+          cbal <- cbal + ifelse( i <= n, dbal, 0 )
+          ccr <-  ccr  + ifelse( i <= n, dcr, 0 )
+    }
+    
+    return( cdbh )
+}
+
+```
+
+
+## Data
+
+We took the `OR_CHANGEdata_DF` Douglas-fir data set provided by David Marshall as a starting point. These data are remeasurement observations from Forest Inventory and Analysis (`FIA`) plots in Oregon.
+
+We subsetted the data to drop observations with missing values for diameter at breast height (`dbh`), basal area per acre (`ba`), basal area per acre in larger trees (`bal`), crown ratio (`cr`) expressed as a fraction, and site index (`si`) at the beginning and ending measurement points. We also dropped remeasurements with measurement intervals less than 5 years.
+
+The final data set is summarized in Table \ref{tab:subsetobs}.
+
+```{r}
+#| label: data_summary
+#| echo: false
+#| message: false
+#| warning: false
+
+vtable::st( df_tree_subset_with_si, 
+            vars=c("startDIA","startBAPA","startBAL","startCR","SICOND","startTPA","startQMD","startHT40","REMPER"),
+            labels=c("dbh","ba","bal","cr","si","tpa","qmd","ht40","period_length"),
+            title="\\label{tab:subsetobs}")
+
+```
+
+
+## Diameter Growth Fitting and Model Comparison
+
+For all regressions in this analysis, we use an integrated fitting approach that allows variable remeasurement intervals by observation. Residuals are annualized for reporting.
+
+We fit the ORGANON diameter growth model to the data:
+
+$\Delta dbh = e^{\beta_0 + \beta_1 log(dbh + 1) + \beta_2 dbh^2 + \beta_3 log(\frac{cr+0.1}{1.2}) + \beta_4 log(si + 4.5) + \beta_5 \frac{bal^2}{dbh+2.7} + \beta_6 ba^{0.5} }$
+
+
+The fit statistics for this model are:
+
+```{r}
+#| label: fit_with_si
+#| echo: false
+#| message: false
+#| warning: false
+
+#minpack.lm::nlsLM
+df_fit_with_si <- nls( endDIA ~ est_dg_with_si( B0, B1, B2, B3, B4, B5, B6, startDIA, startBAPA, endBAPA, startBAL, endBAL, startCR,
+                                                endCR, SICOND, endGROWYR-startGROWYR ),
+                 data = df_tree_subset_with_si,  
+                 start= list( B0= -6.45511, 
+                              B1= -0.0658551, 
+                              B2= -0.00028786, 
+                              B3= 1.1689,
+                              B4 = 1.1623,
+                              B5= -5.22408e-05, 
+                              B6= 0.0351093 ), trace=F )
+x <- summary( df_fit_with_si )
+knitr::kable( reformat_nls( x ) )
+cat( paste( "Residual Standard Error:", x$sigma, "on", x$df[2], "degrees of freedom" ))
+```
+
+
+
+
+
+### Diameter Growth Residuals with Site Index
+
+```{r}
+#| label: df residuals with site
+#| echo: false
+#| message: false
+#| warning: false
+
+
+dg_res <- ( predict( df_fit_with_si )  - df_tree_subset_with_si$endDIA ) / ( df_tree_subset_with_si$endGROWYR - df_tree_subset_with_si$startGROWYR )
+ 
+
+df_tree_subset_with_si %>% ggplot( aes( startDIA, dg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( NA, 4 ) +
+    xlab("dbh (inches)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "With Site Index")
+
+df_tree_subset_with_si %>% ggplot( aes( startBAPA, dg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( NA, 4 ) +
+    xlab("ba (ft^2/acre)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "With Site Index")
+
+df_tree_subset_with_si %>% ggplot( aes( startBAL, dg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( NA, 4 ) +
+    xlab("bal (ft^2/acre)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "With Site Index")
+
+df_tree_subset_with_si %>% ggplot( aes( startCR, dg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( NA, 4 ) +
+    xlab("cr (fraction of ht)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "With Site Index")
+
+df_tree_subset_with_si %>% ggplot( aes( SICOND, dg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( NA, 4 ) +
+    xlab("si (feet)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "With Site Index")
+
+df_tree_subset_with_si %>% ggplot( aes( startHT40, dg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( NA, 4 ) + 
+    xlab( "ht40 (feet)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "With Site Index")
+
+```
+
+
+### Diameter Growth Equation Performance With Site Index
+
+```{r}
+#| label: eq_performance_with_si
+#| echo: false
+#| message: false
+#| warning: false
+
+#summary( df_tree_subset_with_si[,c("startDIA","startBAPA","startCR","startBAL","SICOND")] )
+
+d <- data.frame( dbh=seq(1,30,1), bal=98, ba=193, cr=0.48, si=100 ) 
+p <- df_fit_with_si$m$getPars()
+d$dg_hat <-exp( p[1] + 
+             p[2] * log(d$dbh+1) + 
+             p[3] * d$dbh^2 + 
+             p[4] * log((d$cr+0.2)/1.2) + 
+             p[5] * log(d$si + 4.5) +
+             p[6] * d$bal^2/(log(d$dbh+2.7)) + 
+             p[7] * sqrt(d$ba) )
+d %>% ggplot( aes( dbh, dg_hat ) ) + geom_point() + geom_line() +
+    xlab( "dbh (inches)" ) + ylab( "Predicted dbh growth (inches/year)") + ggtitle( "With Site Index")
+
+
+d <- expand.grid( dbh=c(1,18,36,52), bal=seq(0,250,1), ba=193, cr=0.48, si=100 ) 
+p <- df_fit_with_si$m$getPars()
+d$dg_hat <-exp( p[1] + 
+             p[2] * log(d$dbh+1) + 
+             p[3] * d$dbh^2 + 
+             p[4] * log((d$cr+0.2)/1.2) +
+             p[5] * log(d$si + 4.5) +
+             p[6] * d$bal^2/(log(d$dbh+2.7)) + 
+             p[7] * sqrt(d$ba) )
+d %>% ggplot( aes( bal, dg_hat, group=dbh, color=as.factor(dbh) ) ) + geom_point() + geom_line() + labs(color="dbh") +
+    xlab( "bal (ft^2/acre)" ) + ylab( "Predicted dbh growth (inches/year)") + ggtitle( "With Site Index")
+
+
+d <- expand.grid( dbh=18, bal=122, ba=seq(1,250,1), cr=0.48, si=100 ) 
+p <- df_fit_with_si$m$getPars()
+d$dg_hat <-exp( p[1] + 
+             p[2] * log(d$dbh+1) + 
+             p[3] * d$dbh^2 + 
+             p[4] * log((d$cr+0.2)/1.2) +
+             p[5] * log(d$si + 4.5) +                
+             p[6] * d$bal^2/(log(d$dbh+2.7)) + 
+             p[7] * sqrt(d$ba) )
+d %>% ggplot( aes( ba, dg_hat ) ) + geom_point() + geom_line() +
+    xlab( "ba (ft^2/acre)" ) + ylab( "Predicted dbh growth (inches/year)") + ggtitle( "With Site Index")
+
+
+d <- expand.grid( dbh=18, bal=122, ba=198, cr=seq(0.05,1.00,0.05), si=100 ) 
+p <- df_fit_with_si$m$getPars()
+d$dg_hat <-exp( p[1] + 
+             p[2] * log(d$dbh+1) + 
+             p[3] * d$dbh^2 + 
+             p[4] * log((d$cr+0.2)/1.2) + 
+             p[5] * log(d$si + 4.5) +               
+             p[6] * d$bal^2/(log(d$dbh+2.7)) + 
+             p[7] * sqrt(d$ba) )
+d %>% ggplot( aes( cr, dg_hat ) ) + geom_point() + geom_line() +
+    xlab( "cr (fraction of ht)" ) + ylab( "Predicted dbh growth (inches/year)") + ggtitle( "With Site Index")
+
+
+d <- expand.grid( dbh=18, bal=122, ba=198, cr=0.48, si=seq(80,160,5) ) 
+p <- df_fit_with_si$m$getPars()
+d$dg_hat <-exp( p[1] + 
+             p[2] * log(d$dbh+1) + 
+             p[3] * d$dbh^2 + 
+             p[4] * log((d$cr+0.2)/1.2) + 
+             p[5] * log(d$si + 4.5) +                 
+             p[6] * d$bal^2/(log(d$dbh+2.7)) + 
+             p[7] * sqrt(d$ba) )
+d %>% ggplot( aes( si, dg_hat ) ) + geom_point() + geom_line() +
+    xlab( "si (feet)" ) + ylab( "Predicted dbh growth (inches/year)") + ggtitle( "With Site Index")
+
+```
+
+### Diameter Growth Equation Performance Without Site Index
+
+Here we drop the typically weak `si` variable from the equation:
+
+
+$\Delta dbh = e^{\beta_0 + \beta_1 log(dbh + 1) + \beta_2 dbh^2 + \beta_3 log(\frac{cr+0.1}{1.2}) + \beta_5 \frac{bal^2}{dbh+2.7} + \beta_6 ba^{0.5} }$
+
+
+The fit statistics for this model are:
+
+
+```{r}
+#| label: fit_dg_no_si
+#| echo: false
+#| message: false
+#| warning: false
+
+
+df_fit_no_si <- minpack.lm::nlsLM( endDIA ~ est_dg_no_si( B0, B1, B2, B3, B5, B6, startDIA, startBAPA, endBAPA, startBAL, endBAL, startCR,
+                                                endCR,endGROWYR-startGROWYR ),
+                 data = df_tree_subset_with_si,  
+                 start= list( B0= -6.45511, 
+                              B1= -0.0658551, 
+                              B2= -0.00028786, 
+                              B3= 1.1689,
+                              B5= -5.22408e-05, 
+                              B6= 0.0351093 ), trace=F )
+x <- summary( df_fit_no_si )
+knitr::kable( reformat_nls( x ) )
+cat( paste( "Residual Standard Error:", x$sigma, "on", x$df[2], "degrees of freedom" ))
+
+ 
+```
+
+### Diameter Growth Residuals Without Site Index
+
+```{r}
+#| label: df residuals no site
+#| echo: false
+#| message: false
+#| warning: false
+
+dg_res <- ( predict( df_fit_no_si )  - df_tree_subset_with_si$endDIA ) / ( df_tree_subset_with_si$endGROWYR - df_tree_subset_with_si$startGROWYR )
+ 
+
+df_tree_subset_with_si %>% ggplot( aes( startDIA, dg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( NA, 4 ) +
+    xlab("dbh (inches)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Without Site Index")
+
+df_tree_subset_with_si %>% ggplot( aes( startBAPA, dg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( NA, 4 ) +
+    xlab("ba (ft^2/acre)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Without Site Index")
+
+df_tree_subset_with_si %>% ggplot( aes( startBAL, dg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( NA, 4 ) +
+    xlab("bal (ft^2/acre)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Without Site Index")
+
+df_tree_subset_with_si %>% ggplot( aes( startCR, dg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( NA, 4 ) +
+    xlab("cr (fraction of ht)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Without Site Index")
+
+df_tree_subset_with_si %>% ggplot( aes( SICOND, dg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( NA, 4 ) +
+    xlab("si (feet)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Without Site Index")
+
+df_tree_subset_with_si %>% ggplot( aes( startHT40, dg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( NA, 4 ) + 
+    xlab( "ht40 (feet)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Without Site Index")
+
+```
+
+### Diameter Growth Equation Performance Without Site Index
+
+```{r}
+#| label: eq_performance_no_si
+#| echo: false
+#| message: false
+#| warning: false
+
+#summary( df_tree_subset_with_si[,c("startDIA","startBAPA","startCR","startBAL","SICOND")] )
+
+d <- data.frame( dbh=seq(1,30,1), bal=98, ba=193, cr=0.48 ) 
+p <- df_fit_no_si$m$getPars()
+d$dg_hat <-exp( p[1] + 
+             p[2] * log(d$dbh+1) + 
+             p[3] * d$dbh^2 + 
+             p[4] * log((d$cr+0.2)/1.2) + 
+             p[5] * d$bal^2/(log(d$dbh+2.7)) + 
+             p[6] * sqrt(d$ba) )
+d %>% ggplot( aes( dbh, dg_hat ) ) + geom_point() + geom_line() +
+    xlab( "dbh (inches)" ) + ylab( "Predicted dbh growth (inches/year)") + ggtitle( "Without Site Index") 
+
+
+d <- expand.grid( dbh=c(1,18,36,52), bal=seq(0,250,1), ba=193, cr=0.48 )
+p <- df_fit_no_si$m$getPars()
+d$dg_hat <-exp( p[1] + 
+             p[2] * log(d$dbh+1) + 
+             p[3] * d$dbh^2 + 
+             p[4] * log((d$cr+0.2)/1.2) + 
+             p[5] * d$bal^2/(log(d$dbh+2.7)) + 
+             p[6] * sqrt(d$ba) )
+d %>% ggplot( aes( bal, dg_hat, group=dbh, color=as.factor(dbh) ) ) + geom_point() + geom_line() + labs(color="dbh") +
+    xlab( "bal (ft^2/acre)" ) + ylab( "Predicted dbh growth (inches/year)") + ggtitle( "Without Site Index")
+
+
+d <- expand.grid( dbh=18, bal=122, ba=seq(1,250,1), cr=0.48 )
+p <- df_fit_no_si$m$getPars()
+d$dg_hat <-exp( p[1] + 
+             p[2] * log(d$dbh+1) + 
+             p[3] * d$dbh^2 + 
+             p[4] * log((d$cr+0.2)/1.2) + 
+             p[5] * d$bal^2/(log(d$dbh+2.7)) + 
+             p[6] * sqrt(d$ba) )
+d %>% ggplot( aes( ba, dg_hat ) ) + geom_point() + geom_line()  +
+    xlab( "ba (ft^2/acre)" ) + ylab( "Predicted dbh growth (inches/year)") + ggtitle( "Without Site Index")
+
+
+d <- expand.grid( dbh=18, bal=122, ba=198, cr=seq(0.05,1.00,0.05) )
+p <- df_fit_no_si$m$getPars()
+d$dg_hat <-exp( p[1] + 
+             p[2] * log(d$dbh+1) + 
+             p[3] * d$dbh^2 + 
+             p[4] * log((d$cr+0.2)/1.2) + 
+             p[5] * d$bal^2/(log(d$dbh+2.7)) + 
+             p[6] * sqrt(d$ba) )
+d %>% ggplot( aes( cr, dg_hat ) ) + geom_point() + geom_line()  +
+    xlab( "cr (fraction of ht)" ) + ylab( "Predicted dbh growth (inches/year)") + ggtitle( "Without Site Index")
+
+
+
+```
+### Comparison of Models with and without Site Index
+
+```{r}
+#| label: model_comparison
+#| echo: false
+#| message: false
+#| warning: false
+
+x <- anova( df_fit_no_si, df_fit_with_si )
+attr(x,"heading")[2] <- "Model 1 (without Site Index)\nModel 2 (with Site Index)"
+x
+
+cat( paste( "AIC without Site Index:\t", AIC(df_fit_no_si), "\nAIC with Site Index:\t", AIC(df_fit_with_si)) )
+
+```
+Both the nested model F test and the AIC comparisons indicate that `si` is adding explanatory value to the model.
+
+### Correcting Abiologic Basal Area Term
+
+In the full model (with `si`), the `ba` coefficient is positive. This creates model behavior where diameter growth increases with increasing `ba` -- contrary to our expectations. Here we drop the `ba` variable to examine the effect on model fit and behavior.
+
+The following revised model was fit:
+
+$\Delta dbh = e^{\beta_0 + \beta_1 log(dbh + 1) + \beta_2 dbh^2 + \beta_3 log(\frac{cr+0.1}{1.2}) + \beta_4 log(si + 4.5) + \beta_5 \frac{bal^2}{dbh+2.7} }$
+
+
+The fit statistics for this model are:
+
+```{r}
+#| label: fit_without_ba
+#| echo: false
+#| message: false
+#| warning: false
+
+#minpack.lm::nlsLM
+df_fit_no_ba <- nls( endDIA ~ est_dg_no_ba( B0, B1, B2, B3, B4, B5, startDIA, startBAL, endBAL, startCR,
+                                                endCR, SICOND, endGROWYR-startGROWYR ),
+                 data = df_tree_subset_with_si,  
+                 start= list( B0= -6.45511, 
+                              B1= -0.0658551, 
+                              B2= -0.00028786, 
+                              B3= 1.1689,
+                              B4 = 1.1623,
+                              B5= -5.22408e-05 ), trace=F )
+x <- summary( df_fit_no_ba )
+knitr::kable( reformat_nls( x ) )
+cat( paste( "Residual Standard Error:", x$sigma, "on", x$df[2], "degrees of freedom" ))
+```
+
+
+### Diameter Growth Residuals Without Basal Area per Acre
+
+```{r}
+#| label: df residuals no ba
+#| echo: false
+#| message: false
+#| warning: false
+
+dg_res <- ( predict( df_fit_no_ba )  - df_tree_subset_with_si$endDIA ) / ( df_tree_subset_with_si$endGROWYR - df_tree_subset_with_si$startGROWYR )
+ 
+
+df_tree_subset_with_si %>% ggplot( aes( startDIA, dg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( NA, 4 ) +
+    xlab("dbh (inches)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Without Basal Area")
+
+df_tree_subset_with_si %>% ggplot( aes( startBAPA, dg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( NA, 4 ) +
+    xlab("ba (ft^2/acre)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Without Basal Area")
+
+df_tree_subset_with_si %>% ggplot( aes( startBAL, dg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( NA, 4 ) +
+    xlab("bal (ft^2/acre)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Without Basal Area")
+
+df_tree_subset_with_si %>% ggplot( aes( startCR, dg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( NA, 4 ) +
+    xlab("cr (fraction of ht)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Without Basal Area")
+
+df_tree_subset_with_si %>% ggplot( aes( SICOND, dg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( NA, 4 ) +
+    xlab("si (feet)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Without Basal Area")
+
+df_tree_subset_with_si %>% ggplot( aes( startHT40, dg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( NA, 4 ) + 
+    xlab( "ht40 (feet)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Without Basal Area")
+
+```
+
+### Diameter Growth Equation Performance Without Basal Area
+
+```{r}
+#| label: eq_performance_no_ba
+#| echo: false
+#| message: false
+#| warning: false
+
+#summary( df_tree_subset_with_si[,c("startDIA","startBAPA","startCR","startBAL","SICOND")] )
+
+d <- data.frame( dbh=seq(1,30,1), bal=98, ba=193, cr=0.48, si=100 ) 
+p <- df_fit_with_si$m$getPars()
+d$dg_hat <-exp( p[1] + 
+             p[2] * log(d$dbh+1) + 
+             p[3] * d$dbh^2 + 
+             p[4] * log((d$cr+0.2)/1.2) + 
+             p[5] * log(d$si + 4.5) +
+             p[6] * d$bal^2/(log(d$dbh+2.7))  )
+d %>% ggplot( aes( dbh, dg_hat ) ) + geom_point() + geom_line() +
+    xlab( "dbh (inches)" ) + ylab( "Predicted dbh growth (inches/year)") + ggtitle( "Without Basal Area")
+
+
+d <- expand.grid( dbh=c(1,18,36,52), bal=seq(0,250,1), ba=193, cr=0.48, si=100 ) 
+p <- df_fit_with_si$m$getPars()
+d$dg_hat <-exp( p[1] + 
+             p[2] * log(d$dbh+1) + 
+             p[3] * d$dbh^2 + 
+             p[4] * log((d$cr+0.2)/1.2) +
+             p[5] * log(d$si + 4.5) +
+             p[6] * d$bal^2/(log(d$dbh+2.7))  )
+d %>% ggplot( aes( bal, dg_hat, group=dbh, color=as.factor(dbh) ) ) + geom_point() + geom_line() + labs(color="dbh") +
+    xlab( "bal (ft^2/acre)" ) + ylab( "Predicted dbh growth (inches/year)") + ggtitle( "Without Basal Area")
+
+
+d <- expand.grid( dbh=18, bal=122, ba=198, cr=seq(0.05,1.00,0.05), si=100 ) 
+p <- df_fit_with_si$m$getPars()
+d$dg_hat <-exp( p[1] + 
+             p[2] * log(d$dbh+1) + 
+             p[3] * d$dbh^2 + 
+             p[4] * log((d$cr+0.2)/1.2) + 
+             p[5] * log(d$si + 4.5) +               
+             p[6] * d$bal^2/(log(d$dbh+2.7)))
+d %>% ggplot( aes( cr, dg_hat ) ) + geom_point() + geom_line() +
+    xlab( "cr (fraction of ht)" ) + ylab( "Predicted dbh growth (inches/year)") + ggtitle( "Without Basal Area")
+
+
+d <- expand.grid( dbh=18, bal=122, ba=198, cr=0.48, si=seq(80,160,5) ) 
+p <- df_fit_with_si$m$getPars()
+d$dg_hat <-exp( p[1] + 
+             p[2] * log(d$dbh+1) + 
+             p[3] * d$dbh^2 + 
+             p[4] * log((d$cr+0.2)/1.2) + 
+             p[5] * log(d$si + 4.5) +                 
+             p[6] * d$bal^2/(log(d$dbh+2.7))  )
+d %>% ggplot( aes( si, dg_hat ) ) + geom_point() + geom_line() +
+    xlab( "si (feet)" ) + ylab( "Predicted dbh growth (inches/year)") + ggtitle( "Without Basal Area")
+
+
+```
+
+### Comparison of Models with and without Basal Area
+
+```{r}
+#| label: model_comparison_no_ba
+#| echo: false
+#| message: false
+#| warning: false
+
+x <- anova( df_fit_no_ba, df_fit_with_si )
+attr(x,"heading")[2] <- "Model 1 (without Basal Area)\nModel 2 (with Site Index)"
+x
+
+cat( paste( "AIC without Basal Area:\t", AIC(df_fit_no_ba), "\nAIC with Site Index:\t", AIC(df_fit_with_si)) )
+
+```
+The nested model F test indicates that adding the `ba` variable is significant; however, the AIC comparisons indicate that `ba` is not adding much explanatory value to the model. It appears that we do not pay a large penalty for dropping `ba` and we gain biological consistency.
+
+
+## Playing Around with `si` and no `ba` Model
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+df_tree_subset_with_si %>% ggplot( aes( as.factor(startINVYR), dg_res) ) + 
+    geom_boxplot(varwidth = T) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( NA, 2 ) + 
+    xlab( "Inventory Year") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Without Basal Area")
+
+df_tree_subset_with_si %>% ggplot( aes( startTPA, dg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( NA, 2 ) + 
+    xlab( "Trees per Acre") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Without Basal Area")
+
+df_tree_subset_with_si %>% ggplot( aes( startRD, dg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( NA, 2 ) + 
+    xlab( "Relative Density") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Without Basal Area")
+
+df_tree_subset_with_si %>% ggplot( aes( STDAGE, dg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( NA, 2 ) + 
+    xlab( "Stand Age") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Without Basal Area")
+
+df_tree_subset_with_si %>% ggplot( aes( startHT/(startDIA+1), dg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( NA, 2 ) + xlim(NA,15) +
+    xlab( "ht/(dbh+1)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Without Basal Area")
+
+
+df_tree_subset_with_si %>% ggplot( aes( as.factor(NCOND), dg_res) ) + 
+    geom_boxplot( varwidth = T) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( NA, 2 ) + 
+    xlab( "Number of Conditions") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Without Basal Area")
+
+df_tree_subset_with_si %>% ggplot( aes( as.factor(OWNCD), dg_res) ) + 
+    geom_boxplot( varwidth = T) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( NA, 2 ) + 
+    xlab( "Owner Code") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Without Basal Area")
+
+```
+
+

@@ -1,0 +1,212 @@
+---
+title: "Alternative Douglas-fir Diameter Growth"
+author: "Greg Johnson and David Marshall"
+date: today
+format: pdf
+editor: visual
+fig-format: png
+---
+
+```{r}
+#| label: setup_and_data
+#| message: false
+#| warning: false
+#| include: false
+
+library( dplyr )
+library( ggplot2 )
+
+reformat_nls <- function( nls_model_summary )
+{
+    mat_model <- nls_model_summary$coefficients
+    
+    df_model <- as.data.frame(mat_model)
+    colnames(df_model) <- c("Coef.", "Std. error", "t-stat.", "p")
+    
+    return( df_model )
+}
+
+
+data_path <- "F:/Projects/FVS Remodel/data/"
+
+df_tree_data <- read.csv( paste0(data_path, "OR_CHANGEdata_DF.CSV"), header=T, sep="," )
+
+   
+df_tree_subset <- df_tree_data %>% 
+    filter( !is.na(startDIA) & !is.na(startBAPA) & !is.na(startBAL) & !is.na(startCR) &
+            !is.na(endDIA) & !is.na(endBAPA) & !is.na(endBAL) & !is.na(endCR) &
+            !is.na(startGROWYR) & !is.na(endGROWYR) & endGROWYR - startGROWYR >= 5 )
+
+
+df_tree_subset_with_si <- df_tree_data %>% 
+    filter( !is.na(startDIA) & !is.na(startBAPA) & !is.na(startBAL) & !is.na(startCR) &
+            !is.na(endDIA) & !is.na(endBAPA) & !is.na(endBAL) & !is.na(endCR) &
+            !is.na(startGROWYR) & !is.na(endGROWYR) & endGROWYR - startGROWYR >= 5 &
+            !is.na( SICOND ) ) %>%
+            mutate( startCR = startCR/100, endCR = endCR/100 )
+
+```
+
+## Alternative Model Formulation
+
+$\Delta dbh = e^{\beta_0 + \beta_1 log(\frac{dbh^2 + 1}{cr * ht + 1}) + \beta_2 \frac{bal^2}{dbh+2.7} + \beta_3 log( si + 4.5) }$
+
+The fit statistics for this model are:
+
+```{r}
+#| label: alt_fit
+#| echo: false
+#| message: false
+#| warning: false
+
+
+est_dg_test <- function( B0, B1, B2, B3, dbh0, bal0, bal1, cr0, cr1, ht0, ht1, si, n )
+
+{
+    dht <- (ht1 - ht0)/n
+    dbal <- (bal1 - bal0)/n
+    dcr <- (cr1 - cr0)/n
+    
+    cht <- ht0
+    cdbh <- dbh0
+    cbal <- bal0
+    ccr <- cr0
+
+    max_n <- max( n )
+        
+    for( i in 1:max_n )
+    {
+          dg_hat <- exp( B0 + 
+                         B1 * log( cdbh^2/(ccr*cht+1.0) ) +
+                         B2 * cbal^2/( log(cdbh+2.7) ) +
+                         B3 * log( si + 4.5 ) ) 
+          
+          cdbh <- cdbh + ifelse( i <= n, dg_hat, 0 )
+          cbal <- cbal + ifelse( i <= n, dbal, 0 )
+          cht <- cht +  ifelse( i <= n, dht, 0 )
+          ccr <-  ccr  + ifelse( i <= n, dcr, 0 )
+    }
+    
+    return( cdbh )
+}
+
+df_fit_test <- minpack.lm::nlsLM( endDIA ~ est_dg_test( B0, B1, B2, B3, startDIA, startBAL, endBAL, startCR,
+                                                endCR, startHT, endHT, SICOND, endGROWYR-startGROWYR ),
+                 data = df_tree_subset_with_si,  
+                 start= list( B0= -5.992437e+00, 
+                              B1= -3.029155e-01, 
+                              B2= -8.014774e-05,
+                              B3=  1.077075  ), trace=F )
+x <- summary( df_fit_test )
+knitr::kable( reformat_nls( x ) )
+cat( paste( "Residual Standard Error:", x$sigma, "on", x$df[2], "degrees of freedom" ))
+
+```
+
+```{r}
+#| label: test new dg function
+#| echo: false
+#| message: false
+#| warning: false
+
+# 
+# 
+# df_tree_subset_with_si %>% ggplot( aes( (startDIA^2)/((startHT-startHTLC)+1), (endDIA-startDIA)/REMPER ) ) + 
+#     geom_point() + 
+#     geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) +
+#     ylim( -1, 1 ) + xlim( 0, 200 ) +
+#     xlab( "tree basal area/(live crown length+1)") +
+#     ylab( "Diameter Growth (in/yr)")
+
+dg_hat <- predict( df_fit_test)
+dg_res <- ( dg_hat  - df_tree_subset_with_si$endDIA ) / ( df_tree_subset_with_si$endGROWYR - df_tree_subset_with_si$startGROWYR )
+ 
+
+df_tree_subset_with_si %>% ggplot( aes( startDIA, dg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( NA, 3 ) +
+    xlab("dbh (inches)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative")
+
+df_tree_subset_with_si %>% ggplot( aes( startBAPA, dg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( NA, 3 ) +
+    xlab("ba (ft^2/acre)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative")
+
+df_tree_subset_with_si %>% ggplot( aes( startBAL, dg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( NA, 3 ) +
+    xlab("bal (ft^2/acre)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative")
+
+df_tree_subset_with_si %>% ggplot( aes( startCR, dg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( NA, 3 ) +
+    xlab("cr (fraction of ht)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative")
+
+df_tree_subset_with_si %>% ggplot( aes( SICOND, dg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( NA, 3 ) +
+    xlab("si (feet)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative")
+
+df_tree_subset_with_si %>% ggplot( aes( startHT40, dg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( NA, 3 ) + 
+    xlab( "ht40 (feet)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative")
+
+
+
+df_tree_subset_with_si %>% ggplot( aes( startDIA, (dg_hat-startDIA)/REMPER ) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    xlab("dbh (inches)") +
+    ylab( "Predicted Diameter Growth (in/yr)") + ggtitle( "Alternative")
+
+df_tree_subset_with_si %>% ggplot( aes( startBAPA, (dg_hat-startDIA)/REMPER ) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    xlab("ba (ft^2/acre)") +
+    ylab( "Predicted Diameter Growth (in/yr)") + ggtitle( "Alternative")
+
+df_tree_subset_with_si %>% ggplot( aes( startBAL, (dg_hat-startDIA)/REMPER ) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    xlab("bal (ft^2/acre)") +
+    ylab( "Predicted Diameter Growth (in/yr)") + ggtitle( "Alternative")
+
+df_tree_subset_with_si %>% ggplot( aes( startCR, (dg_hat-startDIA)/REMPER ) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    xlab("cr (fraction of ht)") +
+    ylab( "Predicted Diameter Growth (in/yr)") + ggtitle( "Alternative")
+
+df_tree_subset_with_si %>% ggplot( aes( SICOND, (dg_hat-startDIA)/REMPER ) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    xlab("si (feet)") +
+    ylab( "Predicted Diameter Growth (in/yr)") + ggtitle( "Alternative")
+
+df_tree_subset_with_si %>% ggplot( aes( startHT40,  (dg_hat-startDIA)/REMPER) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    xlab( "ht40 (feet)") +
+    ylab( "Predicted Diameter Growth (in/yr)") + ggtitle( "Alternative")
+
+
+```
