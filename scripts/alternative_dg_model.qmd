@@ -46,7 +46,7 @@ df_tree_subset_with_si <- df_tree_data %>%
 
 ## Alternative Model Formulation
 
-$\Delta dbh = e^{\beta_0 + \beta_1 log(\frac{dbh^2 + 1}{cr * ht + 1}) + \beta_2 \frac{bal^2}{dbh+2.7} + \beta_3 log( si + 4.5) }$
+$\Delta dbh = e^{(\beta_0 + \beta_1 log(\frac{dbh^2 + 1}{(cr * ht + 1)^{\beta_4}}) + \beta_2 \frac{bal^{\beta_5}}{dbh+2.7} + \beta_3 log( si + 4.5)) }$
 
 The fit statistics for this model are:
 
@@ -57,7 +57,7 @@ The fit statistics for this model are:
 #| warning: false
 
 
-est_dg_test <- function( B0, B1, B2, B3, dbh0, bal0, bal1, cr0, cr1, ht0, ht1, si, n )
+est_dg_test <- function( B0, B1, B2, B3, B4, B5, dbh0, bal0, bal1, cr0, cr1, ht0, ht1, si, n )
 
 {
     dht <- (ht1 - ht0)/n
@@ -74,8 +74,8 @@ est_dg_test <- function( B0, B1, B2, B3, dbh0, bal0, bal1, cr0, cr1, ht0, ht1, s
     for( i in 1:max_n )
     {
           dg_hat <- exp( B0 + 
-                         B1 * log( cdbh^2/(ccr*cht+1.0) ) +
-                         B2 * cbal^2/( log(cdbh+2.7) ) +
+                         B1 * log( cdbh^2/(ccr*cht+1.0)^B4 ) +
+                         B2 * cbal^B5/( log(cdbh+2.7) ) +
                          B3 * log( si + 4.5 ) ) 
           
           cdbh <- cdbh + ifelse( i <= n, dg_hat, 0 )
@@ -87,13 +87,15 @@ est_dg_test <- function( B0, B1, B2, B3, dbh0, bal0, bal1, cr0, cr1, ht0, ht1, s
     return( cdbh )
 }
 
-df_fit_test <- minpack.lm::nlsLM( endDIA ~ est_dg_test( B0, B1, B2, B3, startDIA, startBAL, endBAL, startCR,
+df_fit_test <- minpack.lm::nlsLM( endDIA ~ est_dg_test( B0, B1, B2, B3, B4, B5, startDIA, startBAL, endBAL, startCR,
                                                 endCR, startHT, endHT, SICOND, endGROWYR-startGROWYR ),
                  data = df_tree_subset_with_si,  
-                 start= list( B0= -5.992437e+00, 
-                              B1= -3.029155e-01, 
-                              B2= -8.014774e-05,
-                              B3=  1.077075  ), trace=F )
+                 start= list( B0= -6.1654532,               
+                              B1= -0.5462724, 
+                              B2= -0.1152629, 
+                              B3=  0.8343451,
+                              B4 = 1.9405172,
+                              B5 = 0.5877046 ), trace=F )
 x <- summary( df_fit_test )
 knitr::kable( reformat_nls( x ) )
 cat( paste( "Residual Standard Error:", x$sigma, "on", x$df[2], "degrees of freedom" ))
@@ -123,6 +125,7 @@ df_tree_subset_with_si %>% ggplot( aes( startDIA, dg_res) ) +
     geom_point() + 
     geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
     geom_abline( intercept = 0, slope = 0 ) +
+    facet_wrap( ~STATECD ) +
     ylim( -0.5, 0.5 )+
     xlab("dbh (inches)") +
     ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative (outliers removed)")
@@ -131,6 +134,7 @@ df_tree_subset_with_si %>% ggplot( aes( startBAPA, dg_res) ) +
     geom_point() + 
     geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
     geom_abline( intercept = 0, slope = 0 ) +
+    facet_wrap( ~STATECD ) +    
     ylim( -0.5, 0.5 )+
     xlab("ba (ft^2/acre)") +
     ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative (outliers removed)")
@@ -139,6 +143,7 @@ df_tree_subset_with_si %>% ggplot( aes( startBAL, dg_res) ) +
     geom_point() + 
     geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
     geom_abline( intercept = 0, slope = 0 ) +
+    facet_wrap( ~STATECD ) +    
     ylim( -0.5, 0.5 )+
     xlab("bal (ft^2/acre)") +
     ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative (outliers removed)")
@@ -147,6 +152,7 @@ df_tree_subset_with_si %>% ggplot( aes( startCR, dg_res) ) +
     geom_point() + 
     geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
     geom_abline( intercept = 0, slope = 0 ) +
+    facet_wrap( ~STATECD ) +    
     ylim( -0.5, 0.5 )+
     xlab("cr (fraction of ht)") +
     ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative (outliers removed)")
@@ -164,6 +170,7 @@ df_tree_subset_with_si %>% ggplot( aes( startHT40, dg_res) ) +
     geom_point() + 
     geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
     geom_abline( intercept = 0, slope = 0 ) +
+    facet_wrap( ~STATECD ) +    
     ylim( -0.5, 0.5 )+ 
     xlab( "ht40 (feet)") +
     ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative (outliers removed)")
