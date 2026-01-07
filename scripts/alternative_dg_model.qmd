@@ -29,17 +29,14 @@ reformat_nls <- function( nls_model_summary )
 
 data_path <- "F:/Projects/FVS Remodel/data/"
 
-df_tree_data <- read.csv( paste0(data_path, "OR_CHANGEdata_DF.CSV"), header=T, sep="," )
 
+df_tree_data_or <- read.csv( paste0(data_path, "OR_CHANGEdata_DF.CSV"), header=T, sep="," )
+df_tree_data_wa <- read.csv( paste0(data_path, "WA_CHANGEdata.CSV"), header=T, sep="," )
+df_tree_data <- rbind( df_tree_data_or, df_tree_data_wa )
    
-df_tree_subset <- df_tree_data %>% 
-    filter( !is.na(startDIA) & !is.na(startBAPA) & !is.na(startBAL) & !is.na(startCR) &
-            !is.na(endDIA) & !is.na(endBAPA) & !is.na(endBAL) & !is.na(endCR) &
-            !is.na(startGROWYR) & !is.na(endGROWYR) & endGROWYR - startGROWYR >= 5 )
-
-
 df_tree_subset_with_si <- df_tree_data %>% 
-    filter( !is.na(startDIA) & !is.na(startBAPA) & !is.na(startBAL) & !is.na(startCR) &
+    filter( startSPCD == 202 &
+            !is.na(startDIA) & !is.na(startBAPA) & !is.na(startBAL) & !is.na(startCR) &
             !is.na(endDIA) & !is.na(endBAPA) & !is.na(endBAL) & !is.na(endCR) &
             !is.na(startGROWYR) & !is.na(endGROWYR) & endGROWYR - startGROWYR >= 5 &
             !is.na( SICOND ) ) %>%
@@ -126,49 +123,57 @@ df_tree_subset_with_si %>% ggplot( aes( startDIA, dg_res) ) +
     geom_point() + 
     geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
     geom_abline( intercept = 0, slope = 0 ) +
-    ylim( NA, 3 ) +
+    ylim( -0.5, 0.5 )+
     xlab("dbh (inches)") +
-    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative")
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative (outliers removed)")
 
 df_tree_subset_with_si %>% ggplot( aes( startBAPA, dg_res) ) + 
     geom_point() + 
     geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
     geom_abline( intercept = 0, slope = 0 ) +
-    ylim( NA, 3 ) +
+    ylim( -0.5, 0.5 )+
     xlab("ba (ft^2/acre)") +
-    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative")
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative (outliers removed)")
 
 df_tree_subset_with_si %>% ggplot( aes( startBAL, dg_res) ) + 
     geom_point() + 
     geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
     geom_abline( intercept = 0, slope = 0 ) +
-    ylim( NA, 3 ) +
+    ylim( -0.5, 0.5 )+
     xlab("bal (ft^2/acre)") +
-    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative")
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative (outliers removed)")
 
 df_tree_subset_with_si %>% ggplot( aes( startCR, dg_res) ) + 
     geom_point() + 
     geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
     geom_abline( intercept = 0, slope = 0 ) +
-    ylim( NA, 3 ) +
+    ylim( -0.5, 0.5 )+
     xlab("cr (fraction of ht)") +
-    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative")
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative (outliers removed)")
 
-df_tree_subset_with_si %>% ggplot( aes( SICOND, dg_res) ) + 
+df_tree_subset_with_si %>% ggplot( aes( SICOND, dg_res ) ) + 
     geom_point() + 
     geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
     geom_abline( intercept = 0, slope = 0 ) +
-    ylim( NA, 3 ) +
-    xlab("si (feet)") +
-    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative")
+    facet_wrap( ~STATECD ) +
+    ylim( -0.5, 0.5 )+
+    xlab("si (feet)") + 
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative (outliers removed)")
 
 df_tree_subset_with_si %>% ggplot( aes( startHT40, dg_res) ) + 
     geom_point() + 
     geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
     geom_abline( intercept = 0, slope = 0 ) +
-    ylim( NA, 3 ) + 
+    ylim( -0.5, 0.5 )+ 
     xlab( "ht40 (feet)") +
-    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative")
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative (outliers removed)")
+
+df_tree_subset_with_si %>% ggplot( aes( as.factor(STATECD), dg_res) ) + 
+    geom_boxplot( notch = T, varwidth = T ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( -0.5, 0.5 ) + 
+    xlab( "State Code") + 
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative (outliers removed)")
 
 
 
