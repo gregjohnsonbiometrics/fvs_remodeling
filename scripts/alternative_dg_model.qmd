@@ -46,7 +46,21 @@ df_tree_subset_with_si <- df_tree_data %>%
 
 ## Alternative Model Formulation
 
+An alternative to the ORGANON diameter growth equation which reduces parameter count while retaining key features of the original model is shown below. The key change is the term with a ratio of a transformation of diameter at breast height (`dbh`) squared to a transformation of crown length. Since $\beta_1$ is expected to be negative, this tends to slow growth as more basal area accumulates in the tree while moderating that by the amount of productive crown capacity. Basal area in larger trees (`bal`) serves as the inter-tree competition factor, and site index (`si`) as the inherent productivity scaling factor.
+
 $\Delta dbh = e^{(\beta_0 + \beta_1 log(\frac{(dbh+1)^2}{(cr * ht + 1)^{\beta_4}}) + \beta_2 \frac{bal^{\beta_5}}{dbh+2.7} + \beta_3 log( si + 4.5)) }$
+
+where:
+
+- `dbh` = diameter at breast height (inches), 
+- `bal` = basal area per acre in larger trees ($feet^2/ac$), 
+- `cr` = crown ratio (fraction of total height),
+- `ht` = total height (feet), and 
+- `si` = Douglas-fir site index (feet).
+- $\beta_0 - \beta_5$ are parameters to be estimated.
+
+Nonlinear regression was used with an integrated fitting approach such that individual observations can have differing remeasurement intervals. The error to be minimized is ending `dbh`. Since this effectively minimizes diameter growth it can weight observations with longer remeasurement intervals more heavily. The effect of this needs to be evaluated, but putting more emphasis on longer periods may be beneficial. 
+
 
 The fit statistics for this model are:
 
