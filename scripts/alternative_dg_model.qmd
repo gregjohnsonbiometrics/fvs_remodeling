@@ -74,7 +74,7 @@ est_dg_test <- function( B0, B1, B2, B3, B4, B5, dbh0, bal0, bal1, cr0, cr1, ht0
     for( i in 1:max_n )
     {
           dg_hat <- exp( B0 + 
-                         B1 * log( cdbh^2/(ccr*cht+1.0)^B4 ) +
+                         B1 * log( (cdbh+1)^2/(ccr*cht+1.0)^B4 ) +
                          B2 * cbal^B5/( log(cdbh+2.7) ) +
                          B3 * log( si + 4.5 ) ) 
           
