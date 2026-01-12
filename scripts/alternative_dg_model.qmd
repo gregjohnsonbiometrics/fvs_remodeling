@@ -513,24 +513,32 @@ d %>% ggplot( aes( dg_hat_nosi[t]/(endGROWYR - startGROWYR)) ) +
     ggtitle( "Equation 2 Predictions for Trees with One Inch dbh Trees")
 ```
 
+
+## Alternative Model with Latitude and Longitude
+
+First attempt at adding latitude and longitude to the model.
+
+$$\Delta dbh = e^{(\beta_0 + \beta_1 log(\frac{(dbh+1)^2}{(cr * ht + 1)^{\beta_4}}) + \beta_2 \frac{bal^{\beta_5}}{dbh+2.7} + \beta_6 lat + \beta_7 long) }$$ {#eq-latlong}
+
+The fit statistics for @eq-latlong are:
+
 ```{r}
-#| eval: false
-#| include: false
+#| echo: false
+#| message: false
+#| warning: false
 
 
-est_dg_test_ht40 <- function( B0, B1, B2, B3, B4, B5, dbh0, bal0, bal1, cr0, cr1, ht0, ht1, ht400, ht401, n )
+est_dg_latlong <- function( B0, B1, B2, B4, B5, B6, B7,dbh0, bal0, bal1, cr0, cr1, ht0, ht1, lat, long, n )
 
 {
     dht <- (ht1 - ht0)/n
     dbal <- (bal1 - bal0)/n
     dcr <- (cr1 - cr0)/n
-    dht40 <- (ht401 - ht400)/n
-    
+
     cht <- ht0
     cdbh <- dbh0
     cbal <- bal0
     ccr <- cr0
-    cht40 <- ht400
 
     max_n <- max( n )
         
@@ -539,109 +547,141 @@ est_dg_test_ht40 <- function( B0, B1, B2, B3, B4, B5, dbh0, bal0, bal1, cr0, cr1
           dg_hat <- exp( B0 + 
                          B1 * log( (cdbh+1)^2/(ccr*cht+1.0)^B4 ) +
                          B2 * cbal^B5/( log(cdbh+2.7) ) +
-                         B3 * (1/(cht40+1)) ) 
+                         B6 * lat +
+                         B7 * long ) 
           
           cdbh <- cdbh + ifelse( i <= n, dg_hat, 0 )
           cbal <- cbal + ifelse( i <= n, dbal, 0 )
           cht <- cht   +  ifelse( i <= n, dht, 0 )
           ccr <-  ccr  + ifelse( i <= n, dcr, 0 )
-          cht40 <- cht40 + ifelse( i <= n, dht40, 0 )
     }
     
     return( cdbh )
 }
 
-
-
-df_fit_ht40 <- minpack.lm::nlsLM( endDIA ~ est_dg_test_ht40( B0, B1, B2, B3, B4, B5, startDIA, startBAL, endBAL, startCR,
-                                                endCR, startHT, endHT, startHT40, endHT40, endGROWYR-startGROWYR ),
+df_fit_latlong <- minpack.lm::nlsLM( endDIA ~ est_dg_latlong( B0, B1, B2, B4, B5, B6, B7, startDIA, startBAL, endBAL, startCR,
+                                                endCR, startHT, endHT , LAT, LON, endGROWYR-startGROWYR ),
                  data = df_subset, 
-                 start= c(    B0= -5.67,               
-                              B1= -0.57, 
-                              B2= -0.096,
-                              B3 = 0.1,
-                              B4 = 1.72,
-                              B5 = 0.63 ), trace=T )
-x <- summary( df_fit_ht40 )
+                 start= c(    B0= -12.77,               
+                              B1= -0.65, 
+                              B2= -0.11,
+                              B4 = 1.78,
+                              B5 = 0.60,
+                              B6 = -0.012,
+                              B7 = -0.09 ), trace=F )
+x <- summary( df_fit_latlong )
 knitr::kable( reformat_nls( x ) )
 cat( paste( "Residual Standard Error:", x$sigma, "on", x$df[2], 
-            "degrees of freedom, AIC:", AIC(df_fit_ht40) ))
+            "degrees of freedom, AIC:", round(AIC(df_fit_latlong),1) ))
 
 
 
-dg_hat_ht40 <- predict( df_fit_ht40)
-dg_res_ht40 <- ( dg_hat_ht40  - df_subset$endDIA ) / ( df_subset$endGROWYR - df_subset$startGROWYR )
+dg_hat_latlong <- predict( df_fit_latlong)
+dg_res_latlong <- ( dg_hat_latlong  - df_subset$endDIA ) / ( df_subset$endGROWYR - df_subset$startGROWYR )
  
 
-df_subset %>% ggplot( aes( startDIA, dg_res_ht40) ) + 
+df_subset %>% ggplot( aes( startDIA, dg_res_latlong) ) + 
     geom_point() + 
     geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
     geom_abline( intercept = 0, slope = 0 ) +
     facet_wrap( ~STATECD ) +
     ylim( -0.5, 0.5 )+
     xlab("dbh (inches)") +
-    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative by State No Site Index (outliers removed)")
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative by State with Lat / Long (outliers removed)")
 
-df_subset %>% ggplot( aes( startBAPA, dg_res_ht40) ) + 
+df_subset %>% ggplot( aes( startBAPA, dg_res_latlong) ) + 
     geom_point() + 
     geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
     geom_abline( intercept = 0, slope = 0 ) +
     facet_wrap( ~STATECD ) +    
     ylim( -0.5, 0.5 )+
     xlab("ba (ft^2/acre)") +
-    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative by State No Site Index (outliers removed)")
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative by State with Lat / Long (outliers removed)")
 
-df_subset %>% ggplot( aes( startBAL, dg_res_ht40) ) + 
+df_subset %>% ggplot( aes( startBAL, dg_res_latlong) ) + 
     geom_point() + 
     geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
     geom_abline( intercept = 0, slope = 0 ) +
     facet_wrap( ~STATECD ) +    
     ylim( -0.5, 0.5 )+
     xlab("bal (ft^2/acre)") +
-    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative by State No Site Index  (outliers removed)")
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative by State with Lat / Long  (outliers removed)")
 
-df_subset %>% ggplot( aes( startCR, dg_res_ht40) ) + 
+df_subset %>% ggplot( aes( startCR, dg_res_latlong) ) + 
     geom_point() + 
     geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
     geom_abline( intercept = 0, slope = 0 ) +
     facet_wrap( ~STATECD ) +    
     ylim( -0.5, 0.5 )+
     xlab("cr (fraction of ht)") +
-    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative by State No Site Index (outliers removed)")
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative by State with Lat / Long (outliers removed)")
 
-df_subset %>% ggplot( aes( SICOND, dg_res_ht40 ) ) + 
+df_subset %>% ggplot( aes( SICOND, dg_res_latlong ) ) + 
     geom_point() + 
     geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
     geom_abline( intercept = 0, slope = 0 ) +
     facet_wrap( ~as.factor(SIBASE) ) + 
     ylim( -0.5, 0.5 )+
     xlab("si (feet)") + 
-    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative by State No Site Index by si Base Age (outliers removed)")
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative by State with Lat / Long by si Base Age (outliers removed)")
 
-df_subset %>% ggplot( aes( SICOND, dg_res_ht40 ) ) + 
+df_subset %>% ggplot( aes( SICOND, dg_res_latlong ) ) + 
     geom_point() + 
     geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
     geom_abline( intercept = 0, slope = 0 ) +
     facet_wrap( ~ifelse(SISP == 202, "DF si","non DF si") ) + 
     ylim( -0.5, 0.5 )+
     xlab("si (feet)") + 
-    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative by State No Site Index by si Species (outliers removed)")
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative by State with Lat / Long by si Species (outliers removed)")
 
 
-df_subset %>% ggplot( aes( startHT40, dg_res_ht40) ) + 
+df_subset %>% ggplot( aes( startHT40, dg_res_latlong) ) + 
     geom_point() + 
     geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
     geom_abline( intercept = 0, slope = 0 ) +
     facet_wrap( ~STATECD ) +    
     ylim( -0.5, 0.5 )+ 
     xlab( "ht40 (feet)") +
-    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative by State No Site Index (outliers removed)")
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative by State with Lat / Long (outliers removed)")
 
-df_subset %>% ggplot( aes( as.factor(STATECD), dg_res_ht40) ) + 
+df_subset %>% ggplot( aes( as.factor(STATECD), dg_res_latlong) ) + 
     geom_boxplot( notch = T, varwidth = T ) + 
     geom_abline( intercept = 0, slope = 0 ) +
     ylim( -0.5, 0.5 ) + 
     xlab( "State Code") + 
-    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative by State No Site Index (outliers removed)")
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative by State with Lat / Long (outliers removed)")
+
+df_subset %>% ggplot( aes( LAT, dg_res_latlong) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( -0.5, 0.5 )+ 
+    xlab( "latitude") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative with Lat / Long (outliers removed)")
+
+df_subset %>% ggplot( aes( LON, dg_res_latlong) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( -0.5, 0.5 )+ 
+    xlab( "longitude") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative with Lat / Long (outliers removed)")
+
+df_subset %>% ggplot( aes( SLOPE/100 * cos(ASPECT*pi/180), dg_res_latlong) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( -0.5, 0.5 )+ 
+    xlab( "slope * cos(aspect)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative with Lat / Long (outliers removed)")
+
+
+df_subset %>% ggplot( aes( SLOPE/100 * sin(ASPECT*pi/180), dg_res_latlong) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( -0.5, 0.5 )+ 
+    xlab( "slope * sin(aspect)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative with Lat / Long (outliers removed)")
 
 ```
