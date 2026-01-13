@@ -417,6 +417,13 @@ df_subset %>% ggplot( aes( SLOPE/100 * sin(ASPECT*pi/180), dg_res_nosi) ) +
     xlab( "slope * sin(aspect)") +
     ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative No Site Index (outliers removed)")
 
+x <- df_subset %>% mutate( res=dg_res_nosi ) %>% group_by( LON, LAT ) %>% summarize( mean_res=mean( res ) )
+
+x %>% ggplot( aes( LON, LAT, color=Hmisc::cut2(mean_res,c(-0.04,0.05) )) ) + 
+                  geom_point() + 
+                  scale_color_viridis(discrete = T, option="magma") +
+                  labs( color="Mean DG Residual") +
+                  ggtitle( "Alternative No Site Index" )
 
 
 ```
@@ -685,3 +692,6 @@ df_subset %>% ggplot( aes( SLOPE/100 * sin(ASPECT*pi/180), dg_res_latlong) ) +
     ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative with Lat / Long (outliers removed)")
 
 ```
+
+
+
