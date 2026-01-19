@@ -425,6 +425,10 @@ x %>% ggplot( aes( LON, LAT, color=Hmisc::cut2(mean_res,c(-0.04,0.05) )) ) +
                   labs( color="Mean DG Residual") +
                   ggtitle( "Alternative No Site Index" )
 
+x %>% ggplot( aes(x = LON, y = LAT, z = mean_res) ) + geom_contour_filled(alpha = 0.7) + scale_fill_distiller(palette = "Spectral", direction = -1)
+
+x %>% ggplot( aes(x = LON, y = LAT, z = mean_res) ) +
+    geom_contour_fill(na.fill = TRUE, breaks = MakeBreaks(binwidth = 0.02 )) 
 
 ```
 
@@ -519,7 +523,6 @@ d %>% ggplot( aes( dg_hat_nosi[t]/(endGROWYR - startGROWYR)) ) +
     xlab( "Predicted Annual Diameter Growth (inches/year)" ) +
     ggtitle( "Equation 2 Predictions for Trees with One Inch dbh Trees")
 ```
-
 
 ## Alternative Model with Latitude and Longitude
 
@@ -692,6 +695,3 @@ df_subset %>% ggplot( aes( SLOPE/100 * sin(ASPECT*pi/180), dg_res_latlong) ) +
     ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative with Lat / Long (outliers removed)")
 
 ```
-
-
-
