@@ -421,14 +421,9 @@ x <- df_subset %>% mutate( res=dg_res_nosi ) %>% group_by( LON, LAT ) %>% summar
 
 x %>% ggplot( aes( LON, LAT, color=Hmisc::cut2(mean_res,c(-0.04,0.05) )) ) + 
                   geom_point() + 
-                  scale_color_viridis(discrete = T, option="magma") +
+                  viridis::scale_color_viridis(discrete = T, option="magma") +
                   labs( color="Mean DG Residual") +
                   ggtitle( "Alternative No Site Index" )
-
-x %>% ggplot( aes(x = LON, y = LAT, z = mean_res) ) + geom_contour_filled(alpha = 0.7) + scale_fill_distiller(palette = "Spectral", direction = -1)
-
-x %>% ggplot( aes(x = LON, y = LAT, z = mean_res) ) +
-    geom_contour_fill(na.fill = TRUE, breaks = MakeBreaks(binwidth = 0.02 )) 
 
 ```
 
