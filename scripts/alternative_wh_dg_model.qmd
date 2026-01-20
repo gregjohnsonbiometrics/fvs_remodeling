@@ -36,7 +36,7 @@ reformat_nls <- function( nls_model_summary )
 
 data_path <- "F:/Projects/FVS Remodel/data/"
 
-wh_states <- c( "WA", "OR", "CA", "MT", "ID" ) 
+wh_states <- c( "WA", "OR", "CA", "MT", "ID" ) #, "AK" )
 
 # get change data
 wh_tree_data <- NULL
@@ -79,7 +79,7 @@ knitr::kable( x[,c("State","n")], row.names = F, col.names = c("State", "Observa
 
 An alternative to the ORGANON diameter growth equation[^2] which reduces parameter count while retaining key features of the original model is shown below. The key change is the term with a ratio of a transformation of diameter at breast height (`dbh`) squared to crown length. Since $\beta_1$ is expected to be negative, this tends to slow growth as more basal area accumulates in the tree while moderating that decline by the amount of productive crown capacity as measured by crown length. Basal area in larger trees (`bal`) serves as the inter-tree competition factor, and site index (`si`) as the inherent productivity scaling factor.
 
-[^2]: Hann, D.W., Marshall, D.D., and Hanus, M.L. 2006. Reanalysis of the SMC-ORGANON equations for diameter-growth rate, height-growth rate, and mortality rate of Western Hemlock. Forest Research Laboratory Research Contribution 49.
+[^2]: Hann, D.W., Marshall, D.D., and Hanus, M.L. 2006. Reanalysis of the SMC-ORGANON equations for diameter-growth rate, height-growth rate, and mortality rate of Douglas-fir. Forest Research Laboratory Research Contribution 49.
 
 Site index is flawed for a number of reasons:
 
@@ -492,7 +492,6 @@ wh_subset %>% ggplot( aes( startHT40,  (dg_hat-startDIA)/( endGROWYR - startGROW
 ## Discussion
 
 Removing `si` degrades the fit significantly. There is an over-prediction bias for the eastern states for both equations, but is mitigated by the `si` term in @eq-withsi. The residual trend with longitude confirms this.
-
 
 ### Equation Behavior for Very Small Trees
 
