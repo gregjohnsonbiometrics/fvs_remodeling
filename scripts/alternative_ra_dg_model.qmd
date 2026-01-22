@@ -36,7 +36,7 @@ reformat_nls <- function( nls_model_summary )
 
 data_path <- "F:/Projects/FVS Remodel/data/"
 
-states <- c( "WA", "OR", "CA" ) #, "AK" ) 
+states <- c( "WA", "OR", "CA", "AK" ) 
 
 fia_species <- 351
 species_name <- "Red Alder"
@@ -48,7 +48,7 @@ for( state in states )
 
    
 tree_subset <- tree_data %>% 
-    filter( startSPCD == fia_species &
+    filter( SPCD == fia_species &
             !is.na(startDIA) & !is.na(startBAPA) & !is.na(startBAL) & !is.na(startCR) &
             !is.na(endDIA) & !is.na(endBAPA) & !is.na(endBAL) & !is.na(endCR) &
             !is.na(startGROWYR) & !is.na(endGROWYR) & endGROWYR - startGROWYR >= 5 &
@@ -190,6 +190,8 @@ x <- summary( nosi_fit )
 knitr::kable( reformat_nls( x ) )
 cat( paste( "Residual Standard Error:", x$sigma, "on", x$df[2], 
             "degrees of freedom, AIC:", round(AIC(nosi_fit),1) ))
+
+saveRDS( nosi_fit, file=paste0(fia_species, "_fit.RDS") )
 
 ```
 
@@ -437,65 +439,9 @@ x %>% ggplot( aes( LON, LAT, color=Hmisc::cut2(mean_res,c(-0.04,0.05) )) ) +
 
 ```
 
-```{r}
-#| label: with si equation performance
-#| eval: false
-#| message: false
-#| warning: false
-#| include: false
-
-tree_subset %>% ggplot( aes( startDIA, (dg_hat-startDIA)/( endGROWYR - startGROWYR )) ) + 
-    geom_point() + 
-    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
-    xlab("dbh (inches)") +
-    ylab( "Predicted Diameter Growth (in/yr)") + ggtitle( "Alternative")
-
-tree_subset %>% ggplot( aes( startBAPA, (dg_hat-startDIA)/( endGROWYR - startGROWYR ) ) ) + 
-    geom_point() + 
-    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
-    xlab("ba (ft^2/acre)") +
-    ylab( "Predicted Diameter Growth (in/yr)") + ggtitle( "Alternative")
-
-tree_subset %>% ggplot( aes( startBAL, (dg_hat-startDIA)/( endGROWYR - startGROWYR ) ) ) + 
-    geom_point() + 
-    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
-    xlab("bal (ft^2/acre)") +
-    ylab( "Predicted Diameter Growth (in/yr)") + ggtitle( "Alternative")
-
-tree_subset %>% ggplot( aes( startCR, (dg_hat-startDIA)/( endGROWYR - startGROWYR ) ) ) + 
-    geom_point() + 
-    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
-    xlab("cr (fraction of ht)") +
-    ylab( "Predicted Diameter Growth (in/yr)") + ggtitle( "Alternative")
-
-tree_subset %>% ggplot( aes( SICOND, (dg_hat-startDIA)/( endGROWYR - startGROWYR ) ) ) + 
-    geom_point() + 
-    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
-    facet_wrap( ~as.factor(SIBASE)) +
-    xlab("si (feet)") +
-    ylab( "Predicted Diameter Growth (in/yr)") + ggtitle( "Alternative by si Base Age")
-
-
-tree_subset %>% ggplot( aes( SICOND, (dg_hat-startDIA)/( endGROWYR - startGROWYR ) ) ) + 
-    geom_point() + 
-    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
-    facet_wrap( ~ifelse(SISP==202,"DF si", "non DF si")) +
-    xlab("si (feet)") +
-    ylab( "Predicted Diameter Growth (in/yr)") + ggtitle( "Alternative by si Species")
-
-tree_subset %>% ggplot( aes( startHT40,  (dg_hat-startDIA)/( endGROWYR - startGROWYR )) ) + 
-    geom_point() + 
-    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
-    xlab( "ht40 (feet)") +
-    ylab( "Predicted Diameter Growth (in/yr)") + ggtitle( "Alternative")
-
-
-```
-
 ## Discussion
 
 Removing `si` degrades the fit marginally. There seems to be an issue with red alder with small `dbh` values that will need to be investigated. the effect of this over-prediction is evident in the behavior of small trees shown in the next section. It is entirely possible that the limited data available in small trees is affecting the equation's performance.
-
 
 ### Equation Behavior for Very Small Trees
 

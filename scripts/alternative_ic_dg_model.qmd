@@ -48,7 +48,7 @@ for( state in states )
 
    
 tree_subset <- tree_data %>% 
-    filter( startSPCD == fia_species &
+    filter( SPCD == fia_species &
             !is.na(startDIA) & !is.na(startBAPA) & !is.na(startBAL) & !is.na(startCR) &
             !is.na(endDIA) & !is.na(endBAPA) & !is.na(endBAL) & !is.na(endCR) &
             !is.na(startGROWYR) & !is.na(endGROWYR) & endGROWYR - startGROWYR >= 5 &
@@ -190,6 +190,8 @@ x <- summary( nosi_fit )
 knitr::kable( reformat_nls( x ) )
 cat( paste( "Residual Standard Error:", x$sigma, "on", x$df[2], 
             "degrees of freedom, AIC:", round(AIC(nosi_fit),1) ))
+
+saveRDS( nosi_fit, file=paste0(fia_species, "_fit.RDS") )
 
 ```
 
@@ -495,7 +497,6 @@ tree_subset %>% ggplot( aes( startHT40,  (dg_hat-startDIA)/( endGROWYR - startGR
 ## Discussion
 
 Removing `si` degrades the fit marginally. Otherwise, the alternative model fits the data suprisingly well given the limited data.
-
 
 ### Equation Behavior for Very Small Trees
 
