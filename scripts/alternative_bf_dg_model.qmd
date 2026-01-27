@@ -1,5 +1,5 @@
 ---
-title: "Alternative Balsam Fir Pine Diameter Growth"
+title: "Alternative Balsam Fir Diameter Growth"
 author: "Greg Johnson, David Marshall, Aaron Weiskittel"
 date: today
 format: pdf
