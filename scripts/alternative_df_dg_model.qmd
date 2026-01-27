@@ -1,5 +1,5 @@
 ---
-title: "Alternative Douglas-fir Pine Diameter Growth"
+title: "Alternative Douglas-fir Diameter Growth"
 author: "Greg Johnson and David Marshall"
 date: today
 format: pdf

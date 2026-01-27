@@ -114,6 +114,14 @@ tree_subset %>% ggplot( aes( STDAGE, (endACTUALHT-startACTUALHT)/(endGROWYR-star
 
 tree_subset %>% ggplot( aes( (endACTUALHT-startACTUALHT)/(endGROWYR-startGROWYR) )) + geom_histogram( binwidth = 0.1 ) +
     xlab( "Height Growth (feet/year)") + xlim( c(-5,5) )
+
+tree_subset %>% ggplot( aes( STDAGE, startHT40, color=Hmisc::cut2(SICOND,g=5) ) ) + geom_point( size=0.25 ) +
+    geom_smooth() + 
+    xlab( "Stand Age (years)" ) + ylab( "Height 40 (feet)") + labs( color="Site Index (feet)" ) + xlim(c(0,70))
+
+tree_subset %>% ggplot( aes( STDAGE, startHT40, color=Hmisc::cut2(SICOND,g=5) ) ) +
+    geom_smooth() + 
+    xlab( "Stand Age (years)" ) + ylab( "Height 40 (feet)") + labs( color="Site Index (feet)" )
     
 tree_subset %>% ggplot( aes( startACTUALHT, endACTUALHT )) + geom_point() + geom_smooth() +
     geom_abline( intercept = 0, slope=1, col="white" ) +
@@ -121,3 +129,59 @@ tree_subset %>% ggplot( aes( startACTUALHT, endACTUALHT )) + geom_point() + geom
     facet_wrap( ~(endGROWYR-startGROWYR) ) + ggtitle( "by Remeasurement Interval (years)")
 
 ```
+
+```{r}
+
+tree_subset %>% mutate( ht_mai = startACTUALHT/STDAGE ) %>% ggplot( aes( startACTUALHT, ht_mai ) ) + geom_smooth() + xlim( c(0,100)) 
+
+tree_subset %>% mutate( ht_mai = startACTUALHT/STDAGE ) %>% ggplot( aes( startHT40, ht_mai ) ) + geom_smooth()  + xlim( c(0,100)) 
+
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+x <- as.data.frame( tree_subset %>% 
+                        group_by( PLOT, STATECD, UNITCD, COUNTYCD, LAT, LON ) %>% 
+                        summarize( ht40=mean(startHT40), age=mean(STDAGE,na.rm=T) ) %>%
+                        filter( !is.na(age) ) ) 
+
+ht40_fit <- minpack.lm::nlsLM( ht40 ~ b0 + b1*(1-exp(-b2*age))^b3, data=x, 
+                 start=c(b0=1.5, b1=125, b2=0.001, b3=0.47), trace=T )
+
+ht40_hat <- predict( ht40_fit )
+
+x$ht40_hat <- ht40_hat
+x$ratio <- x$ht40 / x$ht40_hat
+
+x2 <- tree_subset %>% inner_join( x %>% select( -age, -ht40, -ht40_hat ), by=c("PLOT","STATECD","UNITCD","COUNTYCD","LAT","LON"))
+
+x2 %>% ggplot( aes( startACTUALHT, (endACTUALHT-startACTUALHT)/(endGROWYR-startGROWYR), color=Hmisc::cut2(ratio,c(0.5,1,1.5)) )) + 
+    geom_point() + 
+    geom_smooth() + 
+    xlab( "Height (feet)" ) + 
+    ylab( "Height Growth (feet/year)") + 
+    ylim(-7,7) + labs(color="HT40 Ratio") +
+    ggtitle( "Douglas-fir, Outliers Removed") 
+
+x2 %>% ggplot( aes( startACTUALHT, (endACTUALHT-startACTUALHT)/(endGROWYR-startGROWYR), color=Hmisc::cut2(ratio,c(0.5,1,1.5)) ) ) + 
+    geom_smooth() + 
+    xlab( "Height (feet)" ) + 
+    ylab( "Height Growth (feet/year)") + 
+    ggtitle( "Douglas-fir, Outliers Removed") + xlim( c(0,NA)) + labs(color="HT40 Ratio") 
+
+knitr::kable( x2 %>% group_by( HT40_ratio= Hmisc::cut2(ratio,c(0.5,1,1.5)) ) %>% summarize( n=length(startHT40)), format = "html"   )
+
+
+x3 <- x %>% group_by( LON, LAT ) %>% summarize( mean_ratio=mean( ratio ) )
+
+x3 %>% ggplot( aes( LON, LAT, color=Hmisc::cut2(mean_ratio,g=5 )) ) + 
+                  geom_point( size=0.75) + 
+                  viridis::scale_color_viridis(discrete = T, option="magma") +
+                  labs( color="Mean HT40 Ratio") +
+    labs(color="HT40_ratio") +  ggtitle( "Douglas-fir")
+
+```
+
