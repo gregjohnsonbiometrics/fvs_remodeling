@@ -211,7 +211,6 @@ tree_subset %>% ggplot( aes( startDIA, dg_res) ) +
     geom_point() + 
     geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
     geom_abline( intercept = 0, slope = 0 ) +
-    facet_wrap( ~is.na(endHTCD)) +
     ylim( -1, 1 )+
     xlab("dbh (inches)") +
     ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative (outliers removed)")
