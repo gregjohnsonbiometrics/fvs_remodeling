@@ -36,7 +36,7 @@ reformat_nls <- function( nls_model_summary )
 
 data_path <- "F:/Projects/FVS Remodel/data/"
 
-states <- c( "ME", "NH", "VT", "MN",  "MD", "WV", "NJ", "VA", "CT", "MA" ) #  "WI","MI","NY", 
+states <- c( "ME", "NH", "VT", "MN",  "MD", "WV", "NJ", "VA", "CT", "MA", "WI", "MI", "NY" )
 
 fia_species <- 12
 species_name <- "Balsam Fir"
