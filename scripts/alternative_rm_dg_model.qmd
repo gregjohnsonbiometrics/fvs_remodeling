@@ -1,0 +1,510 @@
+---
+title: "Alternative Red Maple Diameter Growth"
+author: "Greg Johnson, David Marshall, Aaron Weiskittel"
+date: today
+format: pdf
+editor: visual
+fig-format: png
+---
+
+```{r}
+#| label: setup_and_data
+#| message: false
+#| warning: false
+#| include: false
+
+library( dplyr )
+library( ggplot2 )
+library( nlme )
+
+
+states <- c("AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY")
+fips_codes <- c("01", "02", "04", "05", "06", "08", "09", "10", "11", "12", "13", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "44", "45", "46", "47", "48", "49", "50", "51", "53", "54", "55", "56")
+
+state_fips <- data.frame(State = states, STATECD = as.numeric(fips_codes))
+
+reformat_nls <- function( nls_model_summary )
+{
+    mat_model <- nls_model_summary$coefficients
+    
+    dg_model <- as.data.frame(mat_model)
+    colnames(dg_model) <- c("Coef.", "Std. error", "t-stat.", "p")
+    
+    return( dg_model )
+}
+
+
+data_path <- "F:/Projects/FVS Remodel/data/"
+
+states <- c("AL","AR","CT","DE","FL","GA","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","NE","NH",
+            "NJ","NY","NC","OH","OK","PA","RI","SC","TN","TX","VT","VA","WV","WI")
+
+fia_species <- 316
+species_name <- "Red Maple"
+
+# get change data
+tree_data <- NULL
+for( state in states )
+    tree_data <- rbind( tree_data,  read.csv( paste0(data_path, state, "_CHANGEdata.CSV"), header=T, sep="," ) )
+
+   
+tree_subset <- tree_data %>% 
+    filter( SPCD == fia_species &
+            !is.na(startDIA) & !is.na(startBAPA) & !is.na(startBAL) & !is.na(startCR) & !is.na(startHT) & !is.na( endHT ) &
+            !is.na(endDIA) & !is.na(endBAPA) & !is.na(endBAL) & !is.na(endCR) &
+            !is.na(startGROWYR) & !is.na(endGROWYR) & endGROWYR - startGROWYR >= 5 &
+            !is.na( SICOND ) & !is.na(endHTCD) ) %>%
+            mutate( startCR = startCR/100, endCR = endCR/100, SISP = ifelse(!is.na(SISP), SISP, fia_species),
+                    SIBASE = ifelse( !is.na( SIBASE ), SIBASE, 50 )) %>%
+    inner_join( state_fips, by="STATECD")
+
+```
+
+## Data
+
+We extracted and processed Forest Inventory and Analysis (FIA) data from `r length(unique(tree_subset$STATECD))` states listed in the native range of `r species_name` in the Silvics of North America.[^1]
+
+[^1]: Burns, Russell M., and Barbara H. Honkala, tech. coords. 1990. Silvics of North America: 1. Conifers; 2. Hardwoods. Agriculture Handbook 654. U.S. Department of Agriculture, Forest Service, Washington, DC. vol.2, 877 p.
+
+After subsetting the data to censor observations with missing data, limiting the species to `r species_name` (FIA species code `r fia_species`), and remeasurement intervals $\ge$ 5 years we get the observations in Table \ref{tbl:statesum}.
+
+```{r}
+#| label: state_breakdown
+#| echo: false
+#| message: false
+#| warning: false
+
+x <- tree_subset %>% group_by( State ) %>% summarise( n = length(startDIA))
+
+knitr::kable( x[,c("State","n")], row.names = F, col.names = c("State", "Observations"),
+              caption = paste("\\label{tbl:statesum}", species_name, "Growth Observations by State" ) )
+```
+
+## Alternative Model Formulation
+
+An alternative to the ORGANON diameter growth equation[^2] which reduces parameter count while retaining key features of the original model is shown below. The key change is the term with a ratio of a transformation of diameter at breast height (`dbh`) squared to crown length. Since $\beta_1$ is expected to be negative, this tends to slow growth as more basal area accumulates in the tree while moderating that decline by the amount of productive crown capacity as measured by crown length. Basal area in larger trees (`bal`) serves as the inter-tree competition factor, and site index (`si`) as the inherent productivity scaling factor.
+
+[^2]: Hann, D.W., Marshall, D.D., and Hanus, M.L. 2006. Reanalysis of the SMC-ORGANON equations for diameter-growth rate, height-growth rate, and mortality rate of Douglas-fir. Forest Research Laboratory Research Contribution 49.
+
+Site index is flawed for a number of reasons:
+
+1.  It is not consistently obtained for each plot due to missing `r species_name` site trees,
+2.  It is estimated using a number of different and not necessarily compatible `si` equations, and
+3.  The available `si` equations do not all use the same base age.
+
+In the data set `si` is derived from `r length(unique(tree_subset$SIEQN_REF_CD_FVS))` different site index equations for `r length(unique(tree_subset$SISP))` species. `r species_name` site index comprises `r round(100*nrow(tree_subset %>% filter( SISP == fia_species ))/nrow(tree_subset),0)`% of the observations. There are `r length(unique(tree_subset$SIBASE))` base ages used. Preliminary graphical analysis revealed that base age was most correlated with residual bias. Thus in the following, we fit two equations: one where `SIBASE` and `SISP` are treated as a random effects in a mixed model framework, and a second leaving site index out.
+
+$$\Delta dbh = e^{(\beta_0 + \beta_1 log(\frac{(dbh+1)^2}{(cr * ht + 1)^{\beta_4}}) + \beta_2 \frac{bal^{\beta_5}}{dbh+2.7} + \beta_3 log( si_{s,b} + 4.5)) }$$ {#eq-withsi} and
+
+$$\Delta dbh = e^{(\beta_0 + \beta_1 log(\frac{(dbh+1)^2}{(cr * ht + 1)^{\beta_4}}) + \beta_2 \frac{bal^{\beta_5}}{dbh+2.7}) }$$ {#eq-nosite}
+
+where:
+
+-   `dbh` = diameter at breast height (inches),
+-   `bal` = basal area per acre in larger trees ($feet^2/ac$),
+-   `cr` = crown ratio (fraction of total height),
+-   `ht` = total height (feet), and
+-   $si_{s,b}$ = site index (feet) for species `s` and base age `b`.
+-   $\beta_0 - \beta_5$ are parameters to be estimated.
+
+Nonlinear regression was used with an integrated fitting approach such that individual observations can have differing remeasurement intervals. The error to be minimized is ending `dbh`. Since this effectively minimizes diameter growth it can weight observations with longer remeasurement intervals more heavily. The effect of this needs to be evaluated, but putting more emphasis on longer periods may be beneficial.
+
+The fit statistics for @eq-withsi are:
+
+```{r}
+#| label: alt_fit_with_si
+#| echo: false
+#| message: false
+#| warning: false
+
+
+est_dg <- function( B0, B1, B2, B3, B4, B5, dbh0, bal0, bal1, cr0, cr1, ht0, ht1, si, n )
+
+{
+    dht <- (ht1 - ht0)/n
+    dbal <- (bal1 - bal0)/n
+    dcr <- (cr1 - cr0)/n
+    
+    cht <- ht0
+    cdbh <- dbh0
+    cbal <- bal0
+    ccr <- cr0
+
+    max_n <- max( n )
+        
+    for( i in 1:max_n )
+    {
+          dg_hat <- exp( B0 + 
+                         B1 * log( (cdbh+1)^2/(ccr*cht+1.0)^B4 ) +
+                         B2 * cbal^B5/( log(cdbh+2.7) ) +
+                         B3 * log( si + 4.5 ) ) 
+          
+          cdbh <- cdbh + ifelse( i <= n, dg_hat, 0 )
+          cbal <- cbal + ifelse( i <= n, dbal, 0 )
+          cht <- cht +  ifelse( i <= n, dht, 0 )
+          ccr <-  ccr  + ifelse( i <= n, dcr, 0 )
+    }
+    
+    return( cdbh )
+}
+
+#minpack.lm::nlsLM
+
+
+si_fit <- nlme( endDIA ~ est_dg( B0, B1, B2, B3, B4, B5, startDIA, startBAL, endBAL, startCR,
+                                 endCR, startHT, endHT, SICOND, endGROWYR-startGROWYR ),
+                 data = tree_subset %>% mutate( SIINT=interaction(as.factor( tree_subset$SIBASE),as.factor(tree_subset$SISP == fia_species))), 
+                 fixed = B0 + B1 + B2 + B3 + B4 + B5 ~ 1,
+                 random = B3 ~ 1 | SIINT,
+                 start= c(    B0= -4.720055,                
+                              B1= -0.3783203, 
+                              B2= -0.0684696, 
+                              B3=  0.211395,
+                              B4 = 3.164884,
+                              B5 = 0.7012752 ) ) #, trace=F )
+
+# si_fit <- nls( endDIA ~ est_dg( B0, B1, B2, B3, B4, B5, startDIA, startBAL, endBAL, startCR,
+#                                  endCR, startHT, endHT, SICOND, endGROWYR-startGROWYR ),
+#                  data = tree_subset, 
+#                  start= c(    B0= -4.720055,                
+#                               B1= -0.3783203, 
+#                               B2= -0.0684696, 
+#                               B3=  0.211395,
+#                               B4 = 3.164884,
+#                               B5 = 0.7012752 ), trace=T )
+x <- summary( si_fit )
+#knitr::kable( reformat_nls( x ) )
+print(x)
+print(x$coefficients$random)
+cat( paste( "Residual Standard Error:", x$sigma, "on", x$fixDF$X[1], #x$df[2], 
+            "degrees of freedom, AIC:", round(AIC(si_fit),1) ))
+
+```
+
+and for @eq-nosite:
+
+```{r}
+#| label: alt_fit_no_si
+#| echo: false
+#| message: false
+#| warning: false
+
+nosi_fit <- minpack.lm::nlsLM( endDIA ~ est_dg( B0, B1, B2, 0.0, B4, B5, startDIA, startBAL, endBAL, startCR,
+                                                   endCR, startHT, endHT, SICOND, endGROWYR-startGROWYR ),
+                 data = tree_subset, 
+                 start= c(    B0= -4.720055,                
+                              B1= -0.3783203, 
+                              B2= -0.0684696, 
+                              B4 = 3.164884,
+                              B5 = 0.7012752 
+                              ), trace=F )
+x <- summary( nosi_fit )
+knitr::kable( reformat_nls( x ) )
+cat( paste( "Residual Standard Error:", x$sigma, "on", x$df[2], 
+            "degrees of freedom, AIC:", round(AIC(nosi_fit),1) ))
+
+saveRDS( nosi_fit, file=paste0(fia_species, "_fit.RDS") )
+
+```
+
+### Residual Analysis for @eq-withsi
+
+```{r}
+#| label: test new dg function
+#| echo: false
+#| message: false
+#| warning: false
+
+dg_hat <- predict( si_fit )
+dg_res <- ( dg_hat  - tree_subset$endDIA ) / ( tree_subset$endGROWYR - tree_subset$startGROWYR )
+
+tree_subset %>% ggplot( aes( startDIA, dg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( -1, 1 )+
+    xlab("dbh (inches)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative (outliers removed)")
+
+tree_subset %>% ggplot( aes( startBAPA, dg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    # facet_wrap( ~State ) +    
+    ylim( -1, 1 )+
+    xlab("ba (ft^2/acre)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative (outliers removed)")
+
+tree_subset %>% ggplot( aes( startBAL, dg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    # facet_wrap( ~State ) +    
+    ylim( -1, 1 )+
+    xlab("bal (ft^2/acre)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative (outliers removed)")
+
+tree_subset %>% ggplot( aes( startCR, dg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    # facet_wrap( ~State ) +    
+    ylim( -1, 1 )+
+    xlab("cr (fraction of ht)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative (outliers removed)")
+
+tree_subset %>% ggplot( aes( SICOND, dg_res ) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    facet_wrap( ~as.factor(SIBASE) ) + #SIBASE)) + #facet_wrap( ~State ) +
+    ylim( -1, 1 )+
+    xlab("si (feet)") + 
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative by si Base Age (outliers removed)")
+
+tree_subset %>% ggplot( aes( SICOND, dg_res ) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    facet_wrap( ~ifelse(SISP == fia_species, paste(species_name,"si"),paste("non", species_name, "si") ) ) + 
+    ylim( -1, 1 )+
+    xlab("si (feet)") + 
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative by si Species (outliers removed)")
+
+
+tree_subset %>% ggplot( aes( startHT40, dg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    # facet_wrap( ~State ) +    
+    ylim( -1, 1 )+ 
+    xlab( "ht40 (feet)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative (outliers removed)")
+
+tree_subset %>% ggplot( aes( as.factor(State), dg_res) ) + 
+    geom_boxplot( notch = T, varwidth = T ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( -1, 1 ) + 
+    xlab( "State Code") + 
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative (outliers removed)")
+
+
+tree_subset %>% ggplot( aes( LAT, dg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( -1, 1 )+ 
+    xlab( "latitude") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative (outliers removed)")
+
+tree_subset %>% ggplot( aes( LON, dg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( -1, 1 )+ 
+    xlab( "longitude") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative (outliers removed)")
+
+tree_subset %>% ggplot( aes( SLOPE/100 * cos(ASPECT*pi/180), dg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( -1, 1 )+ 
+    xlab( "slope * cos(aspect)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative (outliers removed)")
+
+
+tree_subset %>% ggplot( aes( SLOPE/100 * sin(ASPECT*pi/180), dg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( -1, 1 )+ 
+    xlab( "slope * sin(aspect)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative (outliers removed)")
+
+```
+
+### Residual Analysis for @eq-nosite
+
+```{r}
+#| label: test new dg function no site
+#| echo: false
+#| message: false
+#| warning: false
+
+dg_hat_nosi <- predict( nosi_fit )
+dg_res_nosi <- ( dg_hat_nosi  - tree_subset$endDIA ) / ( tree_subset$endGROWYR - tree_subset$startGROWYR )
+ 
+
+tree_subset %>% ggplot( aes( startDIA, dg_res_nosi) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    # facet_wrap( ~State ) +
+    ylim( -1, 1 )+
+    xlab("dbh (inches)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative No Site Index (outliers removed)")
+
+tree_subset %>% ggplot( aes( startBAPA, dg_res_nosi) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    # facet_wrap( ~State ) +    
+    ylim( -1, 1 )+
+    xlab("ba (ft^2/acre)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative No Site Index (outliers removed)")
+
+tree_subset %>% ggplot( aes( startBAL, dg_res_nosi) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    # facet_wrap( ~State ) +    
+    ylim( -1, 1 )+
+    xlab("bal (ft^2/acre)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative No Site Index  (outliers removed)")
+
+tree_subset %>% ggplot( aes( startCR, dg_res_nosi) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    # facet_wrap( ~State ) +    
+    ylim( -1, 1 )+
+    xlab("cr (fraction of ht)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative No Site Index (outliers removed)")
+
+tree_subset %>% ggplot( aes( SICOND, dg_res_nosi ) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    facet_wrap( ~as.factor(SIBASE) ) + 
+    ylim( -1, 1 )+
+    xlab("si (feet)") + 
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative No Site Index by si Base Age (outliers removed)")
+
+tree_subset %>% ggplot( aes( SICOND, dg_res_nosi ) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    facet_wrap( ~ifelse(SISP == fia_species, paste(species_name,"si"),paste("non", species_name, "si") ) ) + 
+    ylim( -1, 1 )+
+    xlab("si (feet)") + 
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative No Site Index by si Species (outliers removed)")
+
+
+tree_subset %>% ggplot( aes( startHT40, dg_res_nosi) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    # facet_wrap( ~State ) +    
+    ylim( -1, 1 )+ 
+    xlab( "ht40 (feet)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative No Site Index (outliers removed)")
+
+tree_subset %>% ggplot( aes( as.factor(State), dg_res_nosi) ) + 
+    geom_boxplot( notch = T, varwidth = T ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( -1, 1 ) + 
+    xlab( "State Code") + 
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative No Site Index (outliers removed)")
+
+tree_subset %>% ggplot( aes( LAT, dg_res_nosi) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( -1, 1 )+ 
+    xlab( "latitude") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative No Site Index (outliers removed)")
+
+tree_subset %>% ggplot( aes( LON, dg_res_nosi) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( -1, 1 )+ 
+    xlab( "longitude") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative No Site Index (outliers removed)")
+
+tree_subset %>% ggplot( aes( SLOPE/100 * cos(ASPECT*pi/180), dg_res_nosi) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( -1, 1 )+ 
+    xlab( "slope * cos(aspect)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative No Site Index (outliers removed)")
+
+
+tree_subset %>% ggplot( aes( SLOPE/100 * sin(ASPECT*pi/180), dg_res_nosi) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( -1, 1 )+ 
+    xlab( "slope * sin(aspect)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Alternative No Site Index (outliers removed)")
+
+x <- tree_subset %>% mutate( res=dg_res_nosi ) %>% group_by( LON, LAT ) %>% summarize( mean_res=mean( res ) )
+
+x %>% ggplot( aes( LON, LAT, color=Hmisc::cut2(mean_res,c(-0.04,0.05) )) ) + 
+                  geom_point(size=1.0) + 
+                  viridis::scale_color_viridis(discrete = T, option="magma") +
+                  labs( color="Mean DG Residual") +
+                  ggtitle( "Alternative No Site Index" )
+
+```
+
+## Discussion
+
+Removing `si` does not degrade the fit significantly. @eq-nosite residual graphs show that there are some residual trends spatially.
+
+### Equation Behavior for Very Small Trees
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+t <- tree_subset$startDIA == 1
+d <- tree_subset[t,]
+
+vtable::st( d[,c("startBAPA","startBAL","startHT","startCR","SICOND")], 
+            vars=c("startBAPA","startBAL","startHT","startCR","SICOND"),
+            labels=c("ba","bal","ht","cr","si"),
+            title="\\label{tab:oneinchtrees}Independent Variables for One Inch dbh Trees")            
+
+d %>% ggplot( aes( dg_hat[t]/(endGROWYR - startGROWYR)) ) + 
+    geom_histogram( ) +
+    xlab( "Predicted Annual Diameter Growth (inches/year)" ) +
+    ggtitle( "Equation 1 Predictions for Trees with One Inch dbh Trees")
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+d %>% ggplot( aes( dg_hat_nosi[t]/(endGROWYR - startGROWYR)) ) + 
+    geom_histogram( ) +
+    xlab( "Predicted Annual Diameter Growth (inches/year)" ) +
+    ggtitle( "Equation 2 Predictions for Trees with One Inch dbh Trees")
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+library(sf)
+
+gis_path <- "F:/Projects/FVS Remodel/gis/"
+eco_regions <- st_read(paste0(gis_path, "ecoregions.gpkg"))
+
+tree_subset_sf <- st_as_sf(tree_subset, coords = c("LON", "LAT"), crs = 4326) 
+tree_subset_sf <- st_transform(tree_subset_sf, st_crs(eco_regions))
+
+tree_subset_sf_eco <- st_join(tree_subset_sf, eco_regions, join = st_intersects)
+
+tree_subset_sf_eco %>% ggplot( aes( NA_L2NAME, dg_res_nosi) ) + 
+    geom_boxplot( notch = T, varwidth = T ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    theme(axis.text.x = element_text(angle = -15, vjust = 1, hjust = 0)) +
+    ylim(-0.5,0.5) +
+    xlab( "Level II Eco Region" ) + ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") +
+    ggtitle( paste( species_name, " No Site Diameter Growth Residuals"), subtitle= "Outliers Removed" )
+```

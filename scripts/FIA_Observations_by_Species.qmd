@@ -7,7 +7,6 @@ editor: visual
 fig-format: png
 ---
 
-
 ```{r}
 #| label: setup_and_data
 #| message: false
@@ -38,7 +37,6 @@ by_species <- species_data %>% group_by( SPCD, CommonName ) %>% summarize( n = s
 
 ```
 
-
 ```{r}
 #| echo: false
 #| message: false
@@ -46,4 +44,3 @@ by_species <- species_data %>% group_by( SPCD, CommonName ) %>% summarize( n = s
 
 knitr::kable( by_species, caption = "Observations by Species in FIA Change Dataset")
 ```
-
