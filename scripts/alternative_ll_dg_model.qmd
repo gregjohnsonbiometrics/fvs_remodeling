@@ -441,7 +441,7 @@ x %>% ggplot( aes( LON, LAT, color=Hmisc::cut2(mean_res,c(-0.04,0.05) )) ) +
 
 ## Discussion
 
-Removing `si` do not degrade the fit significantly. There appears to be an under-prediction bias for low `HT40` values. A few states (notably GA, AL, and SC) are over-predicted even with the flawed `si` values. 
+Removing `si` do not degrade the fit significantly. There appears to be an under-prediction bias for low `HT40` values. A few states (notably GA, AL, and SC) are over-predicted even with the flawed `si` values.
 
 @eq-withsi residual graphs show that there are clear residual trends spatially.
 
@@ -474,4 +474,26 @@ d %>% ggplot( aes( dg_hat_nosi[t]/(endGROWYR - startGROWYR)) ) +
     geom_histogram( ) +
     xlab( "Predicted Annual Diameter Growth (inches/year)" ) +
     ggtitle( "Equation 2 Predictions for Trees with One Inch dbh Trees")
+```
+
+```{r}
+#| echo: false
+
+library(sf)
+
+gis_path <- "F:/Projects/FVS Remodel/gis/"
+eco_regions <- st_read(paste0(gis_path, "ecoregions.gpkg"))
+
+tree_subset_sf <- st_as_sf(tree_subset, coords = c("LON", "LAT"), crs = 4326) 
+tree_subset_sf <- st_transform(tree_subset_sf, st_crs(eco_regions))
+
+tree_subset_sf_eco <- st_join(tree_subset_sf, eco_regions, join = st_intersects)
+
+tree_subset_sf_eco %>% ggplot( aes( NA_L2NAME, dg_res_nosi) ) + 
+    geom_boxplot( notch = T, varwidth = T ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    theme(axis.text.x = element_text(angle = -15, vjust = 1, hjust = 0)) +
+    ylim(-0.5,0.5) +
+    xlab( "Level II Eco Region" ) + ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") +
+    ggtitle( paste( species_name, " No Site Diameter Growth Residuals"), subtitle= "Outliers Removed" )
 ```
