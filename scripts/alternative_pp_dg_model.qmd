@@ -139,7 +139,7 @@ est_dg <- function( B0, B1, B2, B3, B4, B5, dbh0, bal0, bal1, cr0, cr1, ht0, ht1
           
           cdbh <- cdbh + ifelse( i <= n, dg_hat, 0 )
           cbal <- cbal + ifelse( i <= n, dbal, 0 )
-          cht <- cht +  ifelse( i <= n, dht, 0 )
+          cht <-  cht +  ifelse( i <= n, dht, 0 )
           ccr <-  ccr  + ifelse( i <= n, dcr, 0 )
     }
     

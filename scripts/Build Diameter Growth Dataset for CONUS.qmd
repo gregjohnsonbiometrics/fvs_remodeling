@@ -34,7 +34,7 @@ species_data <- species_n %>% tidyr::pivot_longer(
     values_to = "n"  ) %>%
     filter( !is.na(n) )
 
-species <- species_data %>% group_by( SPCD, CommonName ) %>% summarize( n = sum(n) ) %>% arrange( desc( n ) )
+species <- species_data %>% group_by( SPCD, CommonName, E_SPGRPCD, W_SPGRPCD ) %>% summarize( n = sum(n) ) %>% arrange( desc( n ) )
 
 saveRDS( species, file=paste0(rds_path,"species.RDS") )
 
