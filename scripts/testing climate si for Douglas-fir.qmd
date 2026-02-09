@@ -83,7 +83,7 @@ pts <- project( pts, "EPSG:4326" )
 si <- terra::extract(climate_si, pts)$lyr1
 
 trees_df$csi <- si
-tree_subset <- trees_df %>% filter( !is.na(csi) )
+tree_subset <- trees_df %>% filter( !is.na(csi) & !(State %in% c("NY", "PA", "IL", "MI")) )
 
 ```
 
@@ -161,7 +161,7 @@ si_fit <- minpack.lm::nlsLM( endDIA ~ est_dg( B0, B1, B2, B3, B4, B5,
                                 startHT, endHT, 
                                 csi, 
                                 endGROWYR-startGROWYR ),
-                data = trees_df, 
+                data = tree_subset, 
                 start= c(    B0= -5.3085995,               
                              B1= -0.70, 
                              B2= -0.09, 
@@ -183,7 +183,15 @@ cat( paste( "Residual Standard Error:", x$sigma, "on", x$df[2],
 #| message: false
 #| warning: false
 
-old_fit <- readRDS( paste0(fits_path, fia_species, "_fit.RDS") )
+
+old_fit <- minpack.lm::nlsLM( endDIA ~ est_dg( B0, B1, B2, 0.0, B4, B5, startDIA, startBAL, endBAL, startCR,
+                                                   endCR, startHT, endHT, SICOND, endGROWYR-startGROWYR ),
+                 data = tree_subset, 
+                 start= c(    B0= -1.4852284,               
+                              B1= -1.2468377, 
+                              B2= -0.2013787, 
+                              B4 = 1.4962702,
+                              B5 = 0.5723840 ), trace=F )
 
 x <- summary( old_fit )
 knitr::kable( reformat_nls( x ) )
