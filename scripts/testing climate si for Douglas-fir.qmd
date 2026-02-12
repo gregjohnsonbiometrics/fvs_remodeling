@@ -242,6 +242,26 @@ tree_subset %>% ggplot( aes( startBAL, dg_res) ) +
     xlab("bal (ft^2/acre)") +
     ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Diameter Growth Model with Climate SI", 
                                                                     subtitle = "Outliers Removed")
+tree_subset %>% ggplot( aes( startBAL, dg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    facet_wrap( ~Hmisc::cut2( csi, g=4 ) ) +    
+    ylim( -0.5, 0.5 )+
+    xlab("bal (ft^2/acre)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Diameter Growth Model with Climate SI", 
+                                                                    subtitle = "Outliers Removed, Paneled by Climate SI" )
+
+tree_subset %>% ggplot( aes( startBAPA, dg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    facet_wrap( ~Hmisc::cut2( csi, g=4 ) ) +    
+    ylim( -0.5, 0.5 )+
+    xlab("ba (ft^2/acre)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "Diameter Growth Model with Climate SI", 
+                                                                    subtitle = "Outliers Removed, Paneled by Climate SI" )
+
 
 tree_subset %>% ggplot( aes( startCR, dg_res) ) + 
     geom_point() + 

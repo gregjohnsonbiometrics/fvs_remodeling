@@ -63,7 +63,7 @@ est_dg <- function( B0, B1, B2, B3, B4, B5, dbh0, bal0, bal1, cr0, cr1, ht0, ht1
           dg_hat <- exp( B0 + 
                          B1 * log( (cdbh+1)^2/(ccr*cht+1.0)^B4 ) +
                          B2 * cbal^B5/( log(cdbh+2.7) ) +
-                         B3 * log( si + 4.5 ) ) 
+                         B3 * log( si + 1.37 ) ) 
           
           cdbh <- cdbh + ifelse( i <= n, dg_hat, 0 )
           cbal <- cbal + ifelse( i <= n, dbal, 0 )
@@ -78,7 +78,7 @@ est_dg <- function( B0, B1, B2, B3, B4, B5, dbh0, bal0, bal1, cr0, cr1, ht0, ht1
 # iterate through species list
 
 fit_stats <- NULL
-for( i in 1:nrow(species) )
+for( i in 25:nrow(species) )
 {
     if( species$n[i] >= min_obs )
     {
@@ -86,32 +86,45 @@ for( i in 1:nrow(species) )
         d <- trees %>% filter( SPCD == species$SPCD[i] )
         if( nrow(d) > min_obs )
         {
-          #minpack.lm::nlsLM
-            nosi_fit <- nls( endDIA ~ est_dg( B0, B1, B2, 0.0, B4, B5, startDIA,
-                                                            startBAL, endBAL, startCR, endCR,
-                                                            startHT, endHT, SICOND,
-                                                            endGROWYR-startGROWYR ),
-                     data = d,
-                     start= c( B0= -4.720055,
-                               B1= -0.3783203,
-                               B2= -0.0684696,
-                               B4 = 3.164884,
-                               B5 = 0.7012752 ), trace=F )
+          
+            nosi_fit <- try(
+                nls( endDIA ~ est_dg( B0, B1, B2, 0.0, B4, B5, startDIA,
+                                                              startBAL, endBAL, startCR, endCR,
+                                                              startHT, endHT, SICOND,
+                                                              endGROWYR-startGROWYR ),
+                       data = d,
+                       start= c( B0= -1.005328,   
+                                 B1= -0.6217302,
+                                 B2= -0.03762980,
+                                 B4 = 1.637099,
+                                 B5 = 0.9014009 ), trace=F ), silent=T )
+
             
             nosi_fit_2 <- minpack.lm::nlsLM( endDIA ~ est_dg( B0, B1, B2, 0.0, B4, B5, startDIA, startBAL, endBAL, startCR,
                                                    endCR, startHT, endHT, SICOND, endGROWYR-startGROWYR ),
-                 data = tree_subset, 
-                 start= c(    B0= -1.4852284,               
-                              B1= -1.2468377, 
-                              B2= -0.2013787, 
-                              B4 = 1.4962702,
-                              B5 = 0.5723840 ), trace=F )
+                 data = d, 
+                 start= c( B0= -1.005328,   
+                           B1= -0.6217302,
+                           B2= -0.03762980,
+                           B4 = 1.637099,
+                           B5 = 0.9014009 ), trace=F )
             
+            opt <- 1
+            if( class(nosi_fit) == "try-error" )
+            {
+                nosi_fit <- nosi_fit_2
+                opt <- 2
+            } else if( AIC(nosi_fit) > AIC(nosi_fit_2 ) ) {
+                nosi_fit <- nosi_fit_2
+                opt <- 2
+            }
+            
+
             x <- nosi_fit$m$getPars()
             o <- data.frame( spcd=species$SPCD[i], n=nrow(d), Common_Name=species$CommonName[i],
                              B0=x[1], B1=x[2], B2=x[3], B4=x[4], B5=x[5],
                              AIC=AIC(nosi_fit), isConv=nosi_fit$convInfo$isConv,
-                             RSS=nosi_fit$m$deviance() )
+                             RSS=nosi_fit$m$deviance(), opt=opt )
             fit_stats <- rbind( fit_stats, o )
             print( o )
         }
@@ -166,7 +179,7 @@ fit_stats2 %>% ggplot( aes( type, B5 )) + geom_violin(draw_quantiles=c(0.25,0.5,
 fit_stats2 %>% mutate( MSE=RSS/n ) %>% ggplot( aes( type, MSE )) + geom_boxplot() + xlab("") + ylab("MSE (inches)")
 
 # 1. Scale
-scaled_df <- scale(fit_stats2[,c(3:7)])
+scaled_df <- scale(fit_stats2[,c(4:8)])
 row.names(scaled_df) <- fit_stats2$Common_Name
 
 # 2. Distance Matrix
