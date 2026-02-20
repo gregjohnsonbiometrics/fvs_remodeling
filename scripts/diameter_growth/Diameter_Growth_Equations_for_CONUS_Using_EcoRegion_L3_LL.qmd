@@ -1,0 +1,364 @@
+---
+title: "Diameter Growth Equations for CONUS Using L3 EcoRegion"
+author: "Greg Johnson, David Marshall, Aaron Weiskittel"
+date: today
+format: pdf
+editor: visual
+fig-format: png
+---
+
+
+```{r}
+#| label: prepare_data
+#| message: false
+#| warning: false
+#| include: false
+
+library( dplyr )
+library( ggplot2 )
+library(tidyverse)
+library(sf)
+library(terra)
+
+
+reformat_nls <- function( nls_model_summary )
+{
+    mat_model <- nls_model_summary$coefficients
+    
+    dg_model <- as.data.frame(mat_model)
+    colnames(dg_model) <- c("Coef.", "Std. error", "t-stat.", "p")
+    
+    return( dg_model )
+}
+
+states <- c("AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY")
+fips_codes <- c("01", "02", "04", "05", "06", "08", "09", "10", "11", "12", "13", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "44", "45", "46", "47", "48", "49", "50", "51", "53", "54", "55", "56")
+
+state_fips <- data.frame(State = states, STATECD = as.numeric(fips_codes))
+
+data_path <- "F:/Projects/FVS Remodel/data/"
+rds_path <- "F:/Projects/FVS Remodel/fvs_remodeling/rds/"
+gis_path <- "F:/Projects/FVS Remodel/gis/"
+
+species <- readRDS( file=paste0(rds_path,"species.RDS") )
+trees <- readRDS( file=paste0(rds_path,"tree_dg_subset.RDS") ) |>
+          select( VERSION, PLOT, STATECD, UNITCD, COUNTYCD, SUBP, TREE, SPCD,
+                  startINVYR, startGROWYR, startDIA, startHT, startHT40, startBAL, startBAPA, startCR,
+                  endINVYR, endGROWYR, endDIA, endHT, endHT40, endBAL, endBAPA, endCR,
+                  SICOND, SIBASE, SISP, STDAGE,
+                  LAT, LON, SLOPE, ASPECT, ELEV,
+                  State )
+
+parms <- readRDS( file=paste0(rds_path,"dg_parms.RDS") )
+
+ecoregions <- st_read( paste0( gis_path,"ecoregions.gpkg" ) )
+
+# observation threshold
+min_obs <- 5000
+
+```
+
+```{r}
+#| label: attach_l3_labels
+#| message: false
+#| warning: false
+#| include: false
+
+
+#fia_species <- 202
+fia_species <- 131
+species_name <- species$CommonName[species$SPCD == fia_species]
+
+tree_subset <- trees |> filter( SPCD == fia_species )
+
+x <- tree_subset |> group_by( PLOT, STATECD, UNITCD, COUNTYCD, LON, LAT ) |> summarize( n=length(LAT) )
+x <- st_as_sf( x, coords = c("LON", "LAT"), crs = 4326 ) 
+x <- st_transform( x, st_crs(ecoregions) )
+x <- st_join( x, ecoregions, join = st_within )
+x_cor <- st_coordinates( x )
+x <- st_drop_geometry( x )
+x <- cbind( x, x_cor )
+x <- x |> select( PLOT, STATECD, UNITCD, COUNTYCD, X, Y, US_L3CODE, US_L3NAME, NA_L3CODE, NA_L3NAME, NA_L2CODE, NA_L2NAME, NA_L1CODE, NA_L1NAME, 
+             STATE_NAME, EPA_REGION, L3_KEY, L2_KEY, L1_KEY )
+
+tree_subset <- x |> inner_join( tree_subset, by=c("PLOT", "STATECD","UNITCD", "COUNTYCD" )) %>% 
+  filter( !(State %in% c("IL","MI")) & !is.na(NA_L3NAME) & endDIA > startDIA )
+
+l3_names <- unique(tree_subset$NA_L3NAME)
+
+```
+
+## Data
+
+We took the FIA diameter growth data subset for `r species_name`, filtered out stray (likely keypunch errors) states (IL and MI), FIA plot locations with missing EPA L3 Codes, and where the diameter at the end of the 5-year or greater measurement interval was less than the starting diameter. This left `r nrow(tree_subset)` growth observations.
+
+The observations are distributed among L3 Codes as follows:
+
+```{r}
+#| label: l3_observations
+#| echo: false
+#| message: false
+#| warning: false
+
+knitr::kable( tree_subset |> group_by( NA_L3NAME, NA_L3CODE ) |> summarize( n = length(X) ) |> arrange(desc(n)) )
+
+```
+
+
+## Diameter Growth Prediction
+
+We fit the equation:
+
+$$\Delta dbh = e^{(\beta_0 + \beta_1 log(\frac{(dbh+1)^2}{(cr * ht + 1)^{\beta_4}}) + \beta_2 \frac{bal^{\beta_5}}{dbh+2.7}) }$$ {#eq-dg}
+
+to the all `r nrow(tree_subset)` growth observations, estimating $\beta_0$ through $\beta_5$.
+
+We then subsetted the data by each EPA L3 Ecoregion and re-estimated the $\beta_0$ parameter. The final parameter estimates are:
+
+
+```{r}
+#| label: diameter_growth_function
+#| message: false
+#| warning: false
+#| include: false
+
+
+est_dg <- function( B0, B1, B2, B3, B4, B5, dbh0, bal0, bal1, cr0, cr1, ht0, ht1, si, n )
+
+{
+    dht <- (ht1 - ht0)/n
+    dbal <- (bal1 - bal0)/n
+    dcr <- (cr1 - cr0)/n
+    
+    cht <- ht0
+    cdbh <- dbh0
+    cbal <- bal0
+    ccr <- cr0
+
+    max_n <- max( n )
+        
+    for( i in 1:max_n )
+    {
+      dg_hat <- exp( B0 + 
+                     B1 * log( (cdbh+1)^2/(ccr*cht+1.0)^B4 ) +
+                     B2 * cbal^B5/( log(cdbh+2.7) ) +
+                     B3 * log( si + 1.37 ) ) 
+      
+      cdbh <- cdbh + ifelse( i <= n, dg_hat, 0 )
+      cbal <- cbal + ifelse( i <= n, dbal, 0 )
+      cht <- cht +  ifelse( i <= n, dht, 0 )
+      ccr <-  ccr  + ifelse( i <= n, dcr, 0 )
+    }
+    
+    return( cdbh )
+}
+
+```
+
+
+```{r}
+#| label: fit_equation
+#| message: false
+#| warning: false
+#| include: false
+
+
+# fit_stats <- NULL
+# for( i in 25:nrow(species) )
+i <- 1
+
+if( species$n[i] >= min_obs )
+{
+    #print( species$SPCD[i] )
+    d <- tree_subset
+    p <- parms %>% filter( spcd == fia_species )
+    if( nrow( d ) > min_obs )
+    {
+      
+        d$dg_hat <- est_dg( p$B0, p$B1, p$B2, 0.0, p$B4, p$B5, 
+                            d$startDIA, d$startBAL, d$endBAL, d$startCR, d$endCR, d$startHT, d$endHT, 
+                            d$SICOND, d$endGROWYR-d$startGROWYR )
+          
+        d$dg_res <- (d$dg_hat - d$endDIA)/(d$endGROWYR-d$startGROWYR)
+
+        l3_parms <- NULL
+        d2 <- NULL
+        for( L3 in unique(d$NA_L3NAME) )
+        {
+          d1 <- d |> filter( NA_L3NAME == L3 )
+          
+          dg_na_fit <- lm( endDIA ~ -1 + est_dg( p$B0, p$B1, p$B2, 0.0, p$B4, p$B5, 
+                                      d1$startDIA, d1$startBAL, d1$endBAL, d1$startCR, d1$endCR, d1$startHT, d1$endHT,
+                                      d1$SICOND, d1$endGROWYR-d1$startGROWYR ), d1 )
+          
+          B0 <- log(dg_na_fit$coefficients) + p$B0       
+          d1$dg_hat_eco <- est_dg( B0, p$B1, p$B2, 0.0, p$B4, p$B5, 
+                                   d1$startDIA, d1$startBAL, d1$endBAL, d1$startCR, d1$endCR, d1$startHT, d1$endHT,
+                                   d1$SICOND, d1$endGROWYR-d1$startGROWYR )
+          d1$B0 <- B0
+          
+          d1$dg_res_eco <- (d1$dg_hat_eco - d1$endDIA)/(d1$endGROWYR-d1$startGROWYR)
+          
+          l3_parms <- rbind( l3_parms, data.frame( NA_L3NAME=L3, B0=B0, n=nrow( d1 ) ) )
+          d2 <- rbind( d2, d1 )
+      }
+   }
+}
+
+
+```
+
+```{r}
+#| label: parameter_estimates
+#| echo: false
+#| message: false
+#| warning: false
+
+knitr::kable( p[4:8], row.names = F )
+
+knitr::kable( l3_parms, col.names=c("L3 Region", "B0", "n"), row.names = F )
+```
+
+
+### Residual Analysis for @eq-dg
+
+The residual analysis below shows that state and L3 Ecoregion bias has been mitigated but not eliminated -- particularly in GA and SC. It also shows that the trends with the traditional site index estimates are largely gone.
+
+```{r}
+#| label: residual_analysis
+#| echo: false
+#| message: false
+#| warning: false
+
+d2 %>% ggplot( aes( startDIA, dg_res_eco) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( -0.5, 0.5 )+
+    xlab("dbh (inches)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "With L3 EcoRegion (outliers removed)")
+
+d2 %>% ggplot( aes( startBAPA, dg_res_eco) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    # facet_wrap( ~State ) +    
+    ylim( -0.5, 0.5 )+
+    xlab("ba (ft^2/acre)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "With L3 EcoRegion (outliers removed)")
+
+d2 %>% ggplot( aes( startBAL, dg_res_eco) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    # facet_wrap( ~State ) +    
+    ylim( -0.5, 0.5 )+
+    xlab("bal (ft^2/acre)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "With L3 EcoRegion  (outliers removed)")
+
+d2 %>% ggplot( aes( startCR, dg_res_eco) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    # facet_wrap( ~State ) +    
+    ylim( -0.5, 0.5 )+
+    xlab("cr (fraction of ht)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "With L3 EcoRegion (outliers removed)")
+
+d2 %>% ggplot( aes( SICOND, dg_res_eco ) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( -0.5, 0.5 )+
+    xlab("si (feet)") + 
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "With L3 EcoRegion (outliers removed)")
+
+d2%>% ggplot( aes( startHT40, dg_res_eco) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    # facet_wrap( ~State ) +    
+    ylim( -0.5, 0.5 )+ 
+    xlab( "ht40 (feet)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "With L3 EcoRegion (outliers removed)")
+
+d2 %>% ggplot( aes( as.factor(State), dg_res_eco) ) + 
+    geom_boxplot( notch = T, varwidth = T ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( -0.5, 0.5 ) + 
+    xlab( "State Code") + 
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "With L3 EcoRegion (outliers removed)")
+
+d2 %>% ggplot( aes( as.factor(NA_L3CODE), dg_res_eco) ) + 
+    geom_boxplot( notch = T, varwidth = T ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( -0.5, 0.5 ) + 
+    xlab( "EcoRegion") + 
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + 
+    ggtitle( "With L3 EcoRegion (outliers removed)") +
+    scale_x_discrete(guide = guide_axis(n.dodge=3))
+
+
+d2 %>% ggplot( aes( Y, dg_res_eco) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( -0.5, 0.5 )+ 
+    xlab( "latitude") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "With L3 EcoRegion (outliers removed)")
+
+d2 %>% ggplot( aes( X, dg_res_eco) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( -0.5, 0.5 )+ 
+    xlab( "longitude") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "With L3 EcoRegion (outliers removed)")
+
+d2%>% ggplot( aes( SLOPE/100 * cos(ASPECT*pi/180), dg_res_eco) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( -0.5, 0.5 )+ 
+    xlab( "slope * cos(aspect)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "With L3 EcoRegion (outliers removed)")
+
+
+d2 %>% ggplot( aes( SLOPE/100 * sin(ASPECT*pi/180), dg_res_eco) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( -0.5, 0.5 )+ 
+    xlab( "slope * sin(aspect)") +
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "With L3 EcoRegion (outliers removed)")
+
+# x <- d2 |> 
+#   mutate( res=dg_res_eco ) |> 
+#   group_by( X, Y, NA_L3NAME ) |> 
+#   summarize( mean_res=median( res ) )
+# 
+# x %>% ggplot( aes( X, Y, color=Hmisc::cut2(mean_res,c(-0.04,0.05) )) ) + 
+#                   geom_point() + 
+#                   viridis::scale_color_viridis(discrete = T, option="magma") +
+#                   labs( color="Mean DG Residual", x="", y="") +
+#                   ggtitle( "L3 Diameter Growth Residuals" )
+# 
+# x %>% ggplot( aes( X, Y, color=as.factor(NA_L3NAME) ) ) + 
+#                   geom_point() + 
+#                   #viridis::scale_color_viridis(discrete = T, option="magma") +
+#                   labs( x="", y="", title="L3 Regions" ) + 
+#                   theme(legend.position = "none")
+
+x <- d2 |> 
+  mutate( res=dg_res_eco ) |> 
+  group_by( STATECD, UNITCD, COUNTYCD ) |> 
+  summarize( mean_res=mean( res), X=mean(X), Y=mean(Y) )
+
+x %>% ggplot( aes( X, Y, color=Hmisc::cut2(mean_res,c(-0.04,0.05) )) ) + 
+                  geom_point() + 
+                  viridis::scale_color_viridis(discrete = T, option="magma") +
+                  labs( color="Mean DG Residual", x="", y="") +
+                  ggtitle( "State - Unit - County Mean Diameter Growth Residuals" )
+
+```
+
