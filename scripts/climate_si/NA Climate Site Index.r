@@ -564,6 +564,14 @@ NA.SI = cbind(NA.SI, NA.SI.pts.ClimateNA)
 
 write.csv(NA.SI,'F:/Projects/FVS Remodel/data/NA.SI.ClimateNA.csv',row.names=F)
 
+library( rpart)
+rpart( SI ~ LON + LAT + AHM + bFFP + CMD + CMI + DD_0 + DD_18 + DD1040 + DD18 + eFFP + EMT + 
+            EXT + FFP + MAP + MAT + MCMT + MSP + MWMT + NFFD + PAS + 
+            PPT_at + PPT_sm + PPT_sp + PPT_wt +RH + SHM + 
+            Tave_at + Tave_sm + Tave_sp + Tave_wt + TD, NA.SI )
+
+d |> ggplot( aes( LON, LAT, col=EMT )) + geom_point()
+d |> ggplot( aes( LON, LAT, col=PPT_sm )) + geom_point()
 
 #read and fit ranger
 NA.SI.ClimateNA=fread('F:/Projects/FVS Remodel/data/NA.SI.ClimateNA.csv')
