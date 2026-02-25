@@ -254,18 +254,30 @@ hc <- hclust(dist_matrix, method = "ward.D2")
 hc_data <- dendro_data(hc, type = "rectangle")
 
 # Build plot manually with ggplot
+lab_col <- rep( "gray", length( hc_data$labels$label ) )
+
+pine <- grep( "pine",  hc_data$labels$label )
+lab_col[pine] <- "red"
+fir <- grep( "fir",  hc_data$labels$label )
+lab_col[fir] <- "green"
+oak <- grep( "oak",  hc_data$labels$label )
+lab_col[oak] <- "blue"
+maple <- grep( "maple",  hc_data$labels$label )
+lab_col[maple] <- "purple"
+
+
 ggplot(hc_data$segments, aes(x = x, y = y, xend = xend, yend = yend)) +
     geom_segment() +
     geom_text( data = hc_data$labels,
-      aes(x = x, y = 0, label = label),
+      aes(x = x, y = 0, label = label, colour = lab_col),
       inherit.aes = FALSE,
       hjust = 1,
       angle = 90,
       size = 3 ) +
       theme_dendro() + 
-      #theme(plot.margin = margin(5.5, 5.5, 40, 5.5)) +
       coord_cartesian(ylim = c(-3, max(hc_data$segments$y) + 1)) +
-    ggtitle( "FIA Species Clusters by Diameter Growth Parameter Estimates")
+    ggtitle( "FIA Species Clusters by Diameter Growth Parameter Estimates") +
+    theme( legend.position = "none" )
 
 knitr::kable( fit_stats2 |> filter( B3 < 0 ) |> inner_join( species, by=c("spcd"="SPCD" ) ) |> select( spcd, Common_Name ),
               row.names = F, col.names = c("FIA Species Code", "Common Name"),
