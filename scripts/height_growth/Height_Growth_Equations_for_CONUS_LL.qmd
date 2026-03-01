@@ -1,5 +1,5 @@
 ---
-title: "Height Growth Equations for CONUS: Douglas-fir"
+title: "Height Growth Equations for CONUS: Loblolly Pine"
 author: "Greg Johnson, David Marshall, Aaron Weiskittel"
 date: today
 format: pdf
@@ -45,7 +45,7 @@ trees <- readRDS( file=paste0(rds_path,"tree_hg_subset.RDS") )
 # observation threshold
 min_obs <- 5000
 
-fia_species <- 202
+fia_species <- 131
 species_name <- species$CommonName[species$SPCD == fia_species]
 
 tree_subset <- trees |> 
@@ -55,7 +55,7 @@ tree_subset <- trees |>
           !is.na(endACTUALHT) &  
            endACTUALHT > startACTUALHT &
           !is.na(PPT_sm) & 
-          !is.na(EMT))
+          !is.na(EMT) & EMT >= -25)
 
 max_height <- max( tree_subset$endACTUALHT, na.rm=T )
 
@@ -63,7 +63,7 @@ max_height <- max( tree_subset$endACTUALHT, na.rm=T )
 
 ## Data
 
-We took the FIA height growth data subset for `r species_name`, filtered out stray (likely keypunch errors) states (NY, PA, IL, and MI), FIA plot locations with missing EPA L3 Codes, and where the diameter at the end of the 5-year or greater measurement interval was less than the starting diameter. This left `r nrow(tree_subset)` growth observations.
+We took the FIA height growth data subset for `r species_name`, filtered out stray (likely keypunch errors) states (IL and MI), FIA plot locations with missing EPA L3 Codes, and where the diameter at the end of the 5-year or greater measurement interval was less than the starting diameter. We also dropped observations where `EMT` was less than -25 $^\circ C$ because their height growth appeared to be too high. This left `r nrow(tree_subset)` growth observations.
 
 The observations are distributed among L3 Codes as follows:
 
@@ -76,6 +76,8 @@ The observations are distributed among L3 Codes as follows:
 knitr::kable( tree_subset |> group_by( NA_L3NAME, NA_L3CODE ) |> summarize( n = length(X) ) |> arrange(desc(n)) )
 
 ```
+
+
 
 ```{r}
 #| label: height_growth_equation
@@ -115,7 +117,8 @@ We fit the equation:
 
 $$\Delta ht = ht_{max} \beta_1 \beta_2 cr^{\beta_3} e^{(-\beta_1 ht -\beta_4 ccfl + \beta_5 PPT_{at} + \beta_6 PPT_{sm} + \beta_7 EMT )} (1 - e^{-\beta_1 ht})^{(\beta_2-1)}$$ {#eq-hg}
 
-to the all `r nrow(tree_subset)` growth observations, estimating $\beta_0$ through $\beta_6$. Where:
+to the all `r nrow(tree_subset)` growth observations, estimating $\beta_0$ through $\beta_6$.
+Where:
 
 -   $ht$ = total height (feet)
 -   $cr$ = crown ratio (fraction of total height)
@@ -131,6 +134,7 @@ $ht_{max}$ was estimated by finding the maximum height observed in the data set 
 #| message: false
 #| warning: false
 #| include: false
+
 
 
 if( species$n[species$SPCD == fia_species] >= min_obs )
@@ -158,6 +162,7 @@ if( species$n[species$SPCD == fia_species] >= min_obs )
 
    }
 }
+
 
 
 ```
@@ -238,8 +243,8 @@ d |> ggplot( aes( startHT40, hg_res) ) +
     ylab( "Height Growth Residual (ft/yr) (Pred-Act)") + ggtitle( "(outliers removed)")
 
 ```
-
 ### Environmental and Climate Variables
+
 
 ```{r}
 #| label: residual_analysis_climate
@@ -351,7 +356,7 @@ x %>% ggplot( aes( X, Y, color=Hmisc::cut2(mean_res,c(-0.4,0.4) )) ) +
 
 ```
 
-### Prediction Performance
+### Prediction Performance 
 
 ```{r}
 #| label: prediction_analysis
