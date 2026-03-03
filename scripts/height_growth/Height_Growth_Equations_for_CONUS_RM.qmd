@@ -1,5 +1,5 @@
 ---
-title: "Height Growth Equations for CONUS: Douglas-fir"
+title: "Height Growth Equations for CONUS: Red Maple"
 author: "Greg Johnson, David Marshall, Aaron Weiskittel"
 date: today
 format: pdf
@@ -45,12 +45,12 @@ trees <- readRDS( file=paste0(rds_path,"tree_hg_subset.RDS") )
 # observation threshold
 min_obs <- 5000
 
-fia_species <- 202
+fia_species <- 316
 species_name <- species$CommonName[species$SPCD == fia_species]
 
 tree_subset <- trees |> 
   filter( SPCD == fia_species & 
-          !(State %in% c("MI","IL")) & 
+          #!(State %in% c("MI","IL")) & 
           !is.na(startACTUALHT) &
           !is.na(endACTUALHT) &  
            endACTUALHT > startACTUALHT &
@@ -63,7 +63,7 @@ max_height <- max( tree_subset$endACTUALHT, na.rm=T )
 
 ## Data
 
-We took the FIA height growth data subset for `r species_name`, filtered out stray (likely keypunch errors) states (NY, PA, IL, and MI), FIA plot locations with missing EPA L3 Codes, and where the diameter at the end of the 5-year or greater measurement interval was less than the starting diameter. This left `r nrow(tree_subset)` growth observations.
+We took the FIA height growth data subset for `r species_name`, filtered out FIA plot locations with missing EPA L3 Codes, and where the diameter at the end of the 5-year or greater measurement interval was less than the starting diameter. This left `r nrow(tree_subset)` growth observations.
 
 The observations are distributed among L3 Codes as follows:
 
@@ -144,13 +144,13 @@ if( species$n[species$SPCD == fia_species] >= min_obs )
                                       d$startHT, d$startCR, d$endCR, d$startCCFL, d$endCCFL, max_height, 
                                       d$PPT_at, d$PPT_sm, d$EMT,
                                       b1, b2, b3, b4, b5, b6, b7 ), d, 
-                       start=c( b1 = 0.0201590, 
-                                b2 = 1.6947983, 
-                                b3 = 0.3043366,
-                                b4=  0.0009686,
-                                b5 = 0.0007282,
-                                b6 = 0.0011422,
-                                b7 = -0.0164485 
+                       start=c( b1 = 0.0170745, 
+                                b2 = 1.86148, 
+                                b3 = 0.0221708,
+                                b4 = 0.00119085,
+                                b5 = -3.00856e-05,
+                                b6 = 0.000579654,
+                                b7 = 0.0022707 
                                 ), trace=T )
           
         d$hg_hat <- predict( hg_fit )

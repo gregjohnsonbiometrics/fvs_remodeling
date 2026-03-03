@@ -178,7 +178,9 @@ The parameter estimates and fit statistics are:
 x <- summary( hg_fit )
 knitr::kable( reformat_nls( x ) )
 cat( paste( "Residual Standard Error:", x$sigma, "on", x$df[2], "degrees of freedom. AIC = ", round(AIC(hg_fit),1) ))
+
 ```
+
 
 ## Residual Analysis for @eq-hg
 
