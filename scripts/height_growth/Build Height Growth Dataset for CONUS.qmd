@@ -25,6 +25,7 @@ fips_codes <- c("01", "02", "04", "05", "06", "08", "09", "10", "11", "12", "13"
 
 state_fips <- data.frame(State = states, STATECD = as.numeric(fips_codes))
 
+
 data_path <- "F:/Projects/FVS Remodel/data/"
 rds_path <- "F:/Projects/FVS Remodel/fvs_remodeling/rds/"
 gis_path <- "F:/Projects/FVS Remodel/gis/"
@@ -34,61 +35,22 @@ species <- readRDS( paste0(rds_path,"species.RDS") )
 
 tree_data <- readRDS( paste0(rds_path,"tree_data.RDS") )
 
-tree_hg_subset <- tree_data %>% 
+tree_hg_subset <- tree_data |>
     filter( !is.na(startDIA) & !is.na(endDIA)  &  
             !is.na(startBAPA) & !is.na(endBAPA) &
             !is.na(startBAL) &!is.na(endBAL) & 
             !is.na(startCCFL) &!is.na(endCCFL) &
             !is.na(startCCH) &!is.na(endCCH) &
             !is.na(startCR) & !is.na(endCR) &
-            !is.na(startHT) & !is.na( endHT ) &
-            !is.na(startGROWYR) & !is.na(endGROWYR) & endGROWYR - startGROWYR >= 5 &
-            !is.na( SICOND ) & !is.na(endHTCD) ) %>%
-            mutate( startCR = startCR/100, endCR = endCR/100, SISP = ifelse(!is.na(SISP), SISP, fia_species ),
-                    SIBASE = ifelse( !is.na( SIBASE ), SIBASE, 50 )) %>%
-    inner_join( state_fips, by="STATECD")
-
-ecoregions <- st_read( paste0( gis_path,"ecoregions.gpkg" ) )
-
-raster_files <- list.files(
-  path = unzip_path, 
-  pattern = "\\.(tif|asc)$", 
-  full.names = TRUE, 
-  ignore.case = TRUE
-)
-
-# 1. Load the rasters
-climate_stack <- rast(raster_files)
-
-# 2. Get the clean base names (e.g., "Normal_1991_2020_MAT")
-raw_names <- gsub("\\.(tif|asc)$", "", basename(raster_files), ignore.case = TRUE)
-
-# 3. Remove the specific prefix "Normal_1991_2020_"
-# The ^ ensures it only replaces the string if it's at the beginning
-clean_names <- gsub("^Normal_1991_2020_", "", raw_names)
-
-# 4. Assign back to the stack
-names(climate_stack) <- clean_names
-
-x <- tree_hg_subset |> group_by( PLOT, STATECD, UNITCD, COUNTYCD, LON, LAT ) |> summarize( n=length(LAT) )
-x <- st_as_sf( x, coords = c("LON", "LAT"), crs = 4326 )
-x <- st_transform( x, crs(climate_stack) )
-x <- cbind( x, extract( climate_stack, x ) )
-
-x <- st_transform( x, st_crs(ecoregions) )
-x <- st_join( x, ecoregions, join = st_within )
-x_cor <- st_coordinates( x )
-x <- st_drop_geometry( x )
-x <- cbind( x, x_cor )
- 
-tree_hg_subset <- tree_hg_subset |> 
-                    inner_join( x |> select( -n, -STATE_NAME, -Shape_Leng, -Shape_Area, -layer ), 
-                                by=c("PLOT","STATECD","UNITCD","COUNTYCD") )
+            startBAPA > 0 & startHT40 > 0 &
+            !is.na(startACTUALHT) & !is.na( endACTUALHT ) & endACTUALHT > startACTUALHT &
+            !is.na(startGROWYR) & !is.na(endGROWYR) & endGROWYR - startGROWYR >= 5 ) |>
+            mutate( startCR = startCR/100, endCR = endCR/100 )
 
 
 saveRDS( tree_hg_subset, file=paste0(rds_path,"tree_hg_subset.RDS") )
 
-hg_species <- tree_hg_subset %>% group_by( SPCD ) %>% summarize( n=n() ) %>% arrange( desc(n) )
+hg_species <- tree_hg_subset |> group_by( SPCD ) |> summarize( n=n() ) |> arrange( desc(n) )
 saveRDS( hg_species, file=paste0(rds_path,"hg_species.RDS") )
 
 
