@@ -45,7 +45,6 @@ min_obs <- 5000
 
 ```
 
-
 ```{r}
 #| label: fit_diameter_growth
 #| eval: false
@@ -54,7 +53,7 @@ min_obs <- 5000
 #| include: false
 
 
-est_dg <- function( n, dbh0, bal0, bal1, cr0, cr1, ht0, ht1, pca, emt, B0, B1, B2, B3, B4, B5, B6, B7 )
+est_dg <- function( n, dbh0, bal0, bal1, cr0, cr1, ht0, ht1, pca, emt, B0, B1, B2, B3, B4, B5, B6 )
 
 {
     dht <- (ht1 - ht0)/n
@@ -119,7 +118,7 @@ for( i in 1:nrow(species) )
             d$dg_res <- (d$dg_hat - d$endDIA)/(d$endGROWYR-d$startGROWYR)
             
             o <- data.frame( spcd=species$SPCD[i], n=nrow(d), Common_Name=species$CommonName[i],
-                             B0=p2[1], B1=p2[2], B2=p2[3], B3=p2[4], B4=p2[5], B5=p2[6], B6=p2[7],
+                             B0=p2[1], B1=p2[2], B2=p2[3], B3=p2[4], B4=p2[5], B5=p2[6], B6=p2[7], B7=p2[8],
                              AIC=AIC(dg_fit), isConv=dg_fit$convInfo$isConv,
                              RSS=dg_fit$m$deviance() )
             fit_stats <- rbind( fit_stats, o )

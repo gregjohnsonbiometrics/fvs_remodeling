@@ -73,7 +73,7 @@ knitr::kable( tree_subset |> group_by( State ) |> summarize( n = length(X) ) |> 
 #| include: false
 
 
-est_dg <- function( n, dbh0, bal0, bal1, cr0, cr1, ht0, ht1, pca, emt, B0, B1, B2, B3, B4, B5, B6, B7 )
+est_dg <- function( n, dbh0, bal0, bal1, cr0, cr1, ht0, ht1, pca, emt, B0, B1, B2, B3, B4, B5, B6 )
 
 {
     dht <- (ht1 - ht0)/n
@@ -90,9 +90,9 @@ est_dg <- function( n, dbh0, bal0, bal1, cr0, cr1, ht0, ht1, pca, emt, B0, B1, B
     for( i in 1:max_n )
     {
       dg_hat <- exp( B0 + 
-                     B1 * log( (cdbh+1)^2/(ccr*cht+1.0)^B4 ) +
-                     B2 * cbal^B5/( log(cdbh+2.7) ) +
-                     B3 * pca + 
+                     B1 * log( (cdbh+1)^2/(ccr*cht+1.0)^B3 ) +
+                     B2 * cbal^B4/( log(cdbh+2.7) ) +
+                     B5 * pca + 
                      B6 * emt ) 
       
       cdbh <- cdbh + ifelse( i <= n, dg_hat, 0 )
@@ -112,7 +112,7 @@ We built a data set for from Forest Inventory and Analysis (FIA) remeasurement d
 
 The diameter growth equation fit to these data was:
 
-$$\Delta dbh = e^{(\beta_0 + \beta_1 log(\frac{(dbh+1)^{\beta_7}}{(cr * ht + 1)^{\beta_4}}) + \beta_2 \frac{bal^{\beta_5}}{dbh+2.7} + \beta_3 PCA_2 + \beta_6 EMT) }$$ {#eq-dg}
+$$\Delta dbh = e^{(\beta_0 + \beta_1 log(\frac{(dbh+1)^{\beta_3}}{(cr * ht + 1)^{\beta_4}}) + \beta_2 \frac{bal^{\beta_5}}{dbh+2.7} + \beta_5 PPT_{sm} + \beta_6 EMT) }$$ {#eq-dg}
 
 where:
 
@@ -120,7 +120,7 @@ where:
 -   $cr$ = crown ratio (fraction of total height)
 -   $ht$ = total height (feet)
 -   $bal$ = basal area in larger trees ($feet^2/acre$)
--   $PCA_2$ = 2nd Principal Component of Climate/Environment Variables
+-   $PPT_{sm}$ = Summer Precipitation (mm)
 -   $EMT$ = extreme minimum temperature ($^\circ C$)
 
 @eq-dg was fit to each qualifying species using an integrated fitting approach and errors minimized were ending `dbh`.
@@ -141,15 +141,15 @@ if( species$n[species$SPCD == fia_species] >= min_obs )
     
         dg_fit <- minpack.lm::nlsLM( d$endDIA ~ est_dg( d$endGROWYR-d$startGROWYR, 
                                      d$startDIA, d$startBAL, d$endBAL, d$startCR, d$endCR, d$startHT, d$endHT,  
-                                     d$lyr.2, d$EMT,
+                                     d$PPT_sm, d$EMT,
                                      b0, b1, b2, b3, b4, b5, b6 ), d, 
-                       start=c( b0 = -1.29,     
+                       start=c( b0 = -1.3208,     
                                 b1 = -0.5836578, 
                                 b2 = -0.0953406, 
-                                b3 = 0.01023,
-                                b4 = 1.83,
-                                b5 = 0.62814,
-                                b6 = 0.03985
+                                b3 = 1.85592,
+                                b4 = 0.62814,
+                                b5 = 0.000677813,
+                                b6 = 0.0425137
                                 ), trace=F )
           
         d$dg_hat <- predict( dg_fit )
@@ -158,6 +158,7 @@ if( species$n[species$SPCD == fia_species] >= min_obs )
    }
 }
 
+saveRDS( d, paste0( rds_path, "df_dg_res.RDS") )
 
 ```
 

@@ -11,7 +11,7 @@ This repo holds scripts and supporting files to re-model Forest Vegetation Simul
 
 Some early priorities and project status are:
 
-1. Establish a uniform site productivity measure for CONUS (perhaps similar to `Climate SI` or Embedded Climate data[^1]).
+1. Establish a uniform site productivity measure for CONUS (perhaps similar to `Climate SI`, Embedded Climate data[^1], or Asymptotic Above Ground Biomass).
 2. Develop a robust system for establishing the age of a plot (or perhaps a tree).
 3. Develop growth equations capable of unbiased estimate across all species.
    * A draft diameter growth equation (not using site index) has been developed for all species across CONUS with sufficient data ($\ge$ 5000 observations). There is good reduction in spatial residual variation. Draft results are [here](https://github.com/gregjohnsonbiometrics/fvs_remodeling/blob/main/pdfs/diameter_growth_equations_for_conus.pdf).

@@ -151,7 +151,7 @@ if( species$n[species$SPCD == fia_species] >= min_obs )
    }
 }
 
-
+saveRDS( d, paste0( rds_path, "df_hg_res.RDS") )
 ```
 
 The parameter estimates and fit statistics are:
@@ -357,14 +357,14 @@ d |> ggplot( aes( X, hg_res) ) +
 
 x <- d |> 
   mutate( res=hg_res ) |> 
-  group_by( STATECD, UNITCD, COUNTYCD ) |> 
+  group_by( STATECD, UNITCD, COUNTYCD, LON, LAT ) |> 
   summarize( mean_res=mean( res), X=mean(X), Y=mean(Y) )
 
-x %>% ggplot( aes( X, Y, color=Hmisc::cut2(mean_res,c(-0.4,0.4) )) ) + 
+x %>% ggplot( aes( LON, LAT, color=Hmisc::cut2(mean_res,c(-0.4,0.4) )) ) + 
                   geom_point() + 
                   viridis::scale_color_viridis(discrete = T, option="magma") +
                   labs( color="Mean HG Residual", x="", y="") +
-                  ggtitle( "State - Unit - County Mean Height Growth Residuals" )
+                  ggtitle( "Mean Height Growth Residuals" )
 
 
 ```
