@@ -43,17 +43,18 @@ min_obs <- 5000
 fia_species <- 131
 species_name <- species$CommonName[species$SPCD == fia_species]
 
-tree_subset <- trees
+tree_subset <- trees |> 
+  filter( SPCD == fia_species ) 
 
-max_height <- max( trees$endACTUALHT, na.rm=T )
+max_height <- max( tree_subset$endACTUALHT, na.rm=T )
 
 ```
 
 ## Data
 
-We took the FIA height growth data subset for `r species_name`, filtered out stray (likely keypunch errors) states (IL and MI), FIA plot locations with missing EPA L3 Codes, and where the diameter at the end of the 5-year or greater measurement interval was less than the starting diameter. We also dropped observations where `EMT` was less than -25 $^\circ C$ because their height growth appeared to be too high. This left `r nrow(tree_subset)` growth observations.
+We took the FIA height growth data subset for `r species_name`, filtered out stray (likely keypunch errors) states, FIA plot locations with missing EPA L3 Codes, and where the diameter at the end of the 5-year or greater measurement interval was less than the starting diameter. This left `r nrow(tree_subset)` growth observations.
 
-The observations are distributed among L3 Codes as follows:
+The observations are distributed among L3 Codes and states as follows:
 
 ```{r}
 #| label: l3_observations
@@ -62,6 +63,8 @@ The observations are distributed among L3 Codes as follows:
 #| warning: false
 
 knitr::kable( tree_subset |> group_by( NA_L3NAME, NA_L3CODE ) |> summarize( n = length(X) ) |> arrange(desc(n)) )
+
+knitr::kable( tree_subset |> group_by( State ) |> summarize( n = length(X) ) |> arrange(desc(n)) )
 
 ```
 
@@ -72,24 +75,28 @@ knitr::kable( tree_subset |> group_by( NA_L3NAME, NA_L3CODE ) |> summarize( n = 
 #| warning: false
 
 
-est_hg <- function( periods, ht, cr, cr2, ccfl, ccfl2, max_height, ppt_at, ppt_sm, emt,
-                          b1, b2, b3, b4, b5, b6, b7 )
+est_hg <- function( periods, ht, cr, cr2, ccfl, ccfl2, cch, cch2,
+                    max_height, elev, td, emt,
+                          b1, b2, b3, b4, b5, b6, b7, b8 )
+
 {
     htc <- ht
     crc <- cr
+    cchc <- cch
     ccflc <- ccfl
     crg <- (cr2 - cr)/periods
     ccflg <- (ccfl2 - ccfl)/ periods
+    cchg <- (cch2 - cch)/ periods
 
     for( i in 1:max(periods) )
     {
-        # abc * exp(-bx) * (1 - exp(-bX))^(c-1)
         htc <- htc + ifelse( i <= periods, 
-                max_height * b1 * b2 * (crc)^b3 * exp(-b1*htc -b4*ccflc + b5*ppt_at + b6*ppt_sm + b7*emt ) *
+                max_height * b1 * b2 * (crc)^b3 * exp(-b1*htc - b4*ccflc -b8*cchc^0.5- b5*elev + b6*td^0.5 + b7*emt ) *                  
                   (1.0-exp(-b1*htc))^(b2-1.0) , 0.0 )
 
         crc <- crc + ifelse( i <= periods, crg, 0.0 )
         ccflc <- ccflc + ifelse( i <= periods, ccflg, 0.0 )
+        cchc <- cchc + ifelse( i <= periods, cchg, 0.0 )
     }
     
     return( htc )
@@ -101,15 +108,16 @@ est_hg <- function( periods, ht, cr, cr2, ccfl, ccfl2, max_height, ppt_at, ppt_s
 
 We fit the equation:
 
-$$\Delta ht = ht_{max} \beta_1 \beta_2 cr^{\beta_3} e^{(-\beta_1 ht -\beta_4 ccfl + \beta_5 PPT_{at} + \beta_6 PPT_{sm} + \beta_7 EMT )} (1 - e^{-\beta_1 ht})^{(\beta_2-1)}$$ {#eq-hg}
+$$\Delta ht = ht_{max} \beta_1 \beta_2 cr^{\beta_3} e^{(-\beta_1 ht -\beta_4 ccfl -\beta_8 cch^{0.5} - \beta_5 elev + \beta_6 * TD^{0.5} + \beta_7 EMT )} (1 - e^{-\beta_1 ht})^{(\beta_2-1)}$$ {#eq-hg}
 
-to the all `r nrow(tree_subset)` growth observations, estimating $\beta_0$ through $\beta_6$. Where:
+to the all `r nrow(tree_subset)` growth observations, estimating $\beta_0$ through $\beta_7$. Where:
 
 -   $ht$ = total height (feet)
 -   $cr$ = crown ratio (fraction of total height)
 -   $ccfl$ = crown competition factor in larger trees ($feet^2/acre$)
--   $PPT_{at}$ = autumn precipitation (mm)
--   $PPT_{sm}$ = summer precipitation (mm)
+-   $cch$ = crown closure at tree tip (fraction of acre)
+-   $elev$ = elevation above sea level (feet)
+-   $TD$ = temperature difference between minimum and maximum ($^\circ C$)
 -   $EMT$ = extreme minimum temperature ($^\circ C$)
 
 $ht_{max}$ was estimated by finding the maximum height observed in the data set for `r species_name`. In our data that value is: `r round(max_height,1)` feet.
@@ -121,7 +129,6 @@ $ht_{max}$ was estimated by finding the maximum height observed in the data set 
 #| include: false
 
 
-
 if( species$n[species$SPCD == fia_species] >= min_obs )
 {
     d <- tree_subset
@@ -130,16 +137,18 @@ if( species$n[species$SPCD == fia_species] >= min_obs )
     {
       
         hg_fit <- minpack.lm::nlsLM( d$endHT ~ est_hg( d$endGROWYR-d$startGROWYR, 
-                                      d$startACTUALHT, d$startCR, d$endCR, d$startCCFL, d$endCCFL, max_height, 
-                                      d$PPT_at, d$PPT_sm, d$EMT,
-                                      b1, b2, 0.0, b4, b5, b6, b7 ), d, 
-                       start=c( b1 = 0.0201590, 
-                                b2 = 1.6947983, 
-                                #b3 = 0.3043366,
-                                b4=  0.0009686,
-                                b5 = 0.0007282,
-                                b6 = 0.0011422,
-                                b7 = -0.0164485 
+                                      d$startHT, d$startCR, d$endCR, d$startCCFL, d$endCCFL, 
+                                      d$startCCH, d$endCCH,
+                                      max_height, d$ELEV, d$TD, d$EMT,
+                                      b1, b2, b3, b4, b5, b6, b7, b8 ), d, 
+                       start=c( b1 = 0.0108871, 
+                                b2 = 1.6261262, 
+                                b3 = 0.4573120,
+                                b4 = 0.0014822,
+                                b5 = 0.0001514,
+                                b6 = 0.2736003,
+                                b7 = 0.0326502,
+                                b8 = 0.866
                                 ), trace=T )
           
         d$hg_hat <- predict( hg_fit )
@@ -148,8 +157,7 @@ if( species$n[species$SPCD == fia_species] >= min_obs )
    }
 }
 
-
-
+saveRDS( d, paste0( rds_path, "ll_hg_res.RDS") )
 ```
 
 The parameter estimates and fit statistics are:
@@ -176,11 +184,11 @@ cat( paste( "Residual Standard Error:", x$sigma, "on", x$df[2], "degrees of free
 #| message: false
 #| warning: false
 
-d |> ggplot( aes( startACTUALHT, hg_res) ) + 
+d |> ggplot( aes( startHT, hg_res) ) + 
     geom_point() + 
     geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
     geom_abline( intercept = 0, slope = 0 ) +
-    ylim( -10, 10 )+
+    ylim( -7.5, 7.5 )+
     xlab("height (feet)") +
     ylab( "Height Growth Residual (ft/yr) (Pred-Act)") + ggtitle( "(outliers removed)")
 
@@ -189,7 +197,7 @@ d |> ggplot( aes( startCCFL, hg_res) ) +
     geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
     geom_abline( intercept = 0, slope = 0 ) +
     # facet_wrap( ~State ) +    
-    ylim( -10, 10 )+
+    ylim( -7.5, 7.5 )+
     xlab("CCFL") +
     ylab( "Height Growth Residual (ft/yr) (Pred-Act)") + ggtitle( "(outliers removed)")
 
@@ -198,7 +206,7 @@ d |> ggplot( aes( startCR, hg_res) ) +
     geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
     geom_abline( intercept = 0, slope = 0 ) +
     # facet_wrap( ~State ) +    
-    ylim( -10, 10 )+
+    ylim( -7.5, 7.5 )+
     xlab("cr (fraction of ht)") +
     ylab( "Height Growth Residual (ft/yr) (Pred-Act)") + ggtitle( "(outliers removed)")
 
@@ -207,15 +215,24 @@ d |> ggplot( aes( startCCH, hg_res) ) +
     geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
     geom_abline( intercept = 0, slope = 0 ) +
     # facet_wrap( ~State ) +    
-    ylim( -10, 10 )+
+    ylim( -7.5, 7.5 )+
     xlab("CCH") +
+    ylab( "Height Growth Residual (ft/yr) (Pred-Act)") + ggtitle( "(outliers removed)")
+
+d |> ggplot( aes( startCCF, hg_res) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    # facet_wrap( ~State ) +    
+    ylim( -7.5, 7.5 )+
+    xlab("CCF") +
     ylab( "Height Growth Residual (ft/yr) (Pred-Act)") + ggtitle( "(outliers removed)")
 
 d |> ggplot( aes( SICOND, hg_res ) ) + 
     geom_point() + 
     geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
     geom_abline( intercept = 0, slope = 0 ) +
-    ylim( -10, 10 )+
+    ylim( -7.5, 7.5 )+
     xlab("si (feet)") + 
     ylab( "Height Growth Residual (ft/yr) (Pred-Act)") + ggtitle( "(outliers removed)")
 
@@ -224,7 +241,7 @@ d |> ggplot( aes( startHT40, hg_res) ) +
     geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
     geom_abline( intercept = 0, slope = 0 ) +
     # facet_wrap( ~State ) +    
-    ylim( -10, 10 )+ 
+    ylim( -7.5, 7.5 )+ 
     xlab( "ht40 (feet)") +
     ylab( "Height Growth Residual (ft/yr) (Pred-Act)") + ggtitle( "(outliers removed)")
 
@@ -238,11 +255,27 @@ d |> ggplot( aes( startHT40, hg_res) ) +
 #| message: false
 #| warning: false
 
+d |> ggplot( aes( lyr.1, hg_res ) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( -7.5, 7.5 )+
+    xlab("Thermal Gradient PC1") + 
+    ylab( "Height Growth Residual (ftn/yr) (Pred-Act)") + ggtitle( "(outliers removed)")
+
+d |> ggplot( aes( lyr.2, hg_res ) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( -7.5, 7.5 )+
+    xlab("Moisture Gradient PC2") + 
+    ylab( "Height Growth Residual (ft/yr) (Pred-Act)") + ggtitle( "(outliers removed)")
+
 d |> ggplot( aes( PPT_at, hg_res ) ) + 
     geom_point() + 
     geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
     geom_abline( intercept = 0, slope = 0 ) +
-    ylim( -10, 10 )+
+    ylim( -7.5, 7.5 )+
     xlab("PPT_at (mm/year)") + 
     ylab( "Height Growth Residual (ft/yr) (Pred-Act)") + ggtitle( "(outliers removed)")
 
@@ -250,7 +283,7 @@ d |> ggplot( aes( PPT_sp, hg_res ) ) +
     geom_point() + 
     geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
     geom_abline( intercept = 0, slope = 0 ) +
-    ylim( -10, 10 )+
+    ylim( -7.5, 7.5 )+
     xlab("PPT_sp (mm/year)") + 
     ylab( "Height Growth Residual (ft/yr) (Pred-Act)") + ggtitle( "(outliers removed)")
 
@@ -258,23 +291,42 @@ d |> ggplot( aes( PPT_sm, hg_res ) ) +
     geom_point() + 
     geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
     geom_abline( intercept = 0, slope = 0 ) +
-    ylim( -10, 10 )+
+    ylim( -7.5, 7.5 )+
     xlab("PPT_sm (mm/year)") + 
     ylab( "Height Growth Residual (ft/yr) (Pred-Act)") + ggtitle( "(outliers removed)")
+
+d |> ggplot( aes( ELEV, hg_res ) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( -7.5, 7.5 )+
+    xlab("ELEV") + 
+    ylab( "Height Growth Residual (ft/yr) (Pred-Act)") + ggtitle( "(outliers removed)")
+
 
 d |> ggplot( aes( EMT, hg_res ) ) + 
     geom_point() + 
     geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
     geom_abline( intercept = 0, slope = 0 ) +
-    ylim( -10, 10 )+
+    ylim( -7.5, 7.5 )+
     xlab("EMT") + 
     ylab( "Height Growth Residual (ft/yr) (Pred-Act)") + ggtitle( "(outliers removed)")
+
+
+d |> ggplot( aes( TD, hg_res ) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( -7.5, 7.5 )+
+    xlab("TD") + 
+    ylab( "Height Growth Residual (ft/yr) (Pred-Act)") + ggtitle( "(outliers removed)")
+
 
 d |> ggplot( aes( SLOPE/100 * cos(ASPECT*pi/180), hg_res) ) + 
     geom_point() + 
     geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
     geom_abline( intercept = 0, slope = 0 ) +
-    ylim( -10, 10 )+ 
+    ylim( -7.5, 7.5 )+ 
     xlab( "slope * cos(aspect)") +
     ylab( "Height Growth Residual (ft/yr) (Pred-Act)") + ggtitle( "(outliers removed)")
 
@@ -282,13 +334,15 @@ d |> ggplot( aes( SLOPE/100 * sin(ASPECT*pi/180), hg_res) ) +
     geom_point() + 
     geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
     geom_abline( intercept = 0, slope = 0 ) +
-    ylim( -10, 10 )+ 
+    ylim( -7.5, 7.5 )+ 
     xlab( "slope * sin(aspect)") +
     ylab( "Height Growth Residual (ft/yr) (Pred-Act)") + ggtitle( "(outliers removed)")
 
-#cor( d[,c(159,111:142)], use="pairwise.complete" )[1,]
+cor( d[,c(170,114:145,164,165)], use="pairwise.complete" )[1,]
 
 ```
+
+### Location Variables
 
 ```{r}
 #| label: residual_analysis_location
@@ -299,24 +353,31 @@ d |> ggplot( aes( SLOPE/100 * sin(ASPECT*pi/180), hg_res) ) +
 d |> ggplot( aes( as.factor(State), hg_res) ) + 
     geom_boxplot( notch = T, varwidth = T ) + 
     geom_abline( intercept = 0, slope = 0 ) +
-    ylim( -10, 10 ) + 
+    ylim( -7.5, 7.5 ) + 
     xlab( "State Code") + 
     ylab( "Height Growth Residual (ft/yr) (Pred-Act)") + ggtitle( "(outliers removed)")
 
 d |> ggplot( aes( as.factor(NA_L3CODE), hg_res) ) + 
     geom_boxplot( notch = T, varwidth = T ) + 
     geom_abline( intercept = 0, slope = 0 ) +
-    ylim( -10, 10 ) + 
+    ylim( -7.5, 7.5 ) + 
     xlab( "EcoRegion") + 
     ylab( "Height Growth Residual (ft/yr) (Pred-Act)") + 
     ggtitle( "(outliers removed)") +
     scale_x_discrete(guide = guide_axis(n.dodge=3))
 
+d |> ggplot( aes( as.factor(startOWNCD), hg_res) ) + 
+    geom_boxplot( notch = T, varwidth = T ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( -7.5, 7.5 ) + 
+    xlab( "Owner Code") + 
+    ylab( "Height Growth Residual (ft/yr) (Pred-Act)") + ggtitle( "(outliers removed)")
+
 d |> ggplot( aes( Y, hg_res) ) + 
     geom_point() + 
     geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
     geom_abline( intercept = 0, slope = 0 ) +
-    ylim( -10, 10 )+ 
+    ylim( -7.5, 7.5 )+ 
     xlab( "latitude") +
     ylab( "Height Growth Residual (ft/yr) (Pred-Act)") + ggtitle( "(outliers removed)")
 
@@ -324,20 +385,20 @@ d |> ggplot( aes( X, hg_res) ) +
     geom_point() + 
     geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
     geom_abline( intercept = 0, slope = 0 ) +
-    ylim( -10, 10 )+ 
+    ylim( -7.5, 7.5 )+ 
     xlab( "longitude") +
     ylab( "Height Growth Residual (ft/yr) (Pred-Act)") + ggtitle( "(outliers removed)")
 
 x <- d |> 
   mutate( res=hg_res ) |> 
-  group_by( STATECD, UNITCD, COUNTYCD ) |> 
+  group_by( STATECD, UNITCD, COUNTYCD, LON, LAT ) |> 
   summarize( mean_res=mean( res), X=mean(X), Y=mean(Y) )
 
-x %>% ggplot( aes( X, Y, color=Hmisc::cut2(mean_res,c(-0.4,0.4) )) ) + 
+x %>% ggplot( aes( LON, LAT, color=Hmisc::cut2(mean_res,c(-0.4,0.4) )) ) + 
                   geom_point() + 
                   viridis::scale_color_viridis(discrete = T, option="magma") +
                   labs( color="Mean HG Residual", x="", y="") +
-                  ggtitle( "State - Unit - County Mean Height Growth Residuals" )
+                  ggtitle( "Mean Height Growth Residuals" )
 
 
 ```

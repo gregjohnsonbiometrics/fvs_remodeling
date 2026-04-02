@@ -1,5 +1,5 @@
 ---
-title: "Diameter Growth Equations for CONUS with Climate Variables"
+title: "Diameter Growth Equations for CONUS with Environment and Climate Variables"
 author: "Greg Johnson, David Marshall, Aaron Weiskittel"
 date: today
 format: pdf
@@ -53,7 +53,7 @@ min_obs <- 5000
 #| include: false
 
 
-est_dg <- function( n, dbh0, bal0, bal1, cr0, cr1, ht0, ht1, pca, emt, B0, B1, B2, B3, B4, B5, B6 )
+est_dg <- function( n, dbh0, bal0, bal1, cr0, cr1, ht0, ht1, elev, emt, B0, B1, B2, B3, B4, B5, B6 )
 
 {
     dht <- (ht1 - ht0)/n
@@ -72,7 +72,7 @@ est_dg <- function( n, dbh0, bal0, bal1, cr0, cr1, ht0, ht1, pca, emt, B0, B1, B
       dg_hat <- exp( B0 + 
                      B1 * log( (cdbh+1)^2/(ccr*cht+1.0)^B3 ) +
                      B2 * cbal^B4/( log(cdbh+2.7) ) +
-                     B5 * pca + 
+                     B5 * elev + 
                      B6 * emt ) 
       
       cdbh <- cdbh + ifelse( i <= n, dg_hat, 0 )
@@ -101,14 +101,14 @@ for( i in 1:nrow(species) )
 
             dg_fit <- minpack.lm::nlsLM( d$endDIA ~ est_dg( d$endGROWYR-d$startGROWYR, 
                                d$startDIA, d$startBAL, d$endBAL, d$startCR, d$endCR, d$startHT, d$endHT,  
-                               d$PPT_sm, d$EMT,
+                               d$ELEV, d$EMT,
                                b0, b1, b2, b3, b4, b5, b6 ), d, 
                  start=c( b0 = -1.29,     
                           b1 = -0.5836578, 
                           b2 = -0.0953406, 
                           b3 = 1.83,
                           b4 = 0.62814,
-                          b5 = 0.01023,
+                          b5 = -0.001023,
                           b6 = 0.03985
                           ), trace=T )
             
@@ -127,7 +127,7 @@ for( i in 1:nrow(species) )
     }
 }
 
-saveRDS( fit_stats, file=paste0(rds_path,"dg_parms_climate.RDS") )
+saveRDS( fit_stats, file=paste0(rds_path,"dg_parms_elev_emt.RDS") )
 
 
 ```
@@ -137,15 +137,15 @@ saveRDS( fit_stats, file=paste0(rds_path,"dg_parms_climate.RDS") )
 ```{r}
 #| include: false
 #| 
-fit_stats <- readRDS( file=paste0(rds_path,"dg_parms_climate.RDS") )
+fit_stats <- readRDS( file=paste0(rds_path,"dg_parms_elev_emt.RDS") )
 
 ```
 
-We built a data set from Forest Inventory and Analysis (FIA) remeasurement data, filtering out observations with missing values for diameter at breast height (`dbh`), basal area in larger trees (`bal`), crown ratio (`cr`), total height (`ht`), site index (`si`), summer precipitation ($PPT_{sm}$), extreme minimum temperature (`EMT`), and remeasurement intervals less than 5 years. We also restricted the data to species with $\ge$ `r min_obs` observations.
+We built a data set from Forest Inventory and Analysis (FIA) remeasurement data, filtering out observations with missing values for diameter at breast height (`dbh`), basal area in larger trees (`bal`), crown ratio (`cr`), total height (`ht`), site index (`si`), elevation above sea level (`elev`), extreme minimum temperature (`EMT`), and remeasurement intervals less than 5 years. We also restricted the data to species with $\ge$ `r min_obs` observations.
 
 The diameter growth equation fit to these data was:
 
-$$\Delta dbh = e^{(\beta_0 + \beta_1 log(\frac{(dbh+1)^2}{(cr * ht + 1)^{\beta_3}}) + \beta_2 \frac{bal^{\beta_4}}{dbh+2.7} + \beta_5 PPT_{sm} + \beta_6 EMT) }$$ {#eq-dg}
+$$\Delta dbh = e^{(\beta_0 + \beta_1 log(\frac{(dbh+1)^2}{(cr * ht + 1)^{\beta_3}}) + \beta_2 \frac{bal^{\beta_4}}{dbh+2.7} + \beta_5 elev + \beta_6 EMT) }$$ {#eq-dg}
 
 where:
 
@@ -153,7 +153,7 @@ where:
 -   $cr$ = crown ratio (fraction of total height)
 -   $ht$ = total height (feet)
 -   $bal$ = basal area in larger trees ($feet^2/acre$)
--   $PPT_{sm}$ = summer precipitation (mm)
+-   $elev$ = elevation above sea level (feet)
 -   $EMT$ = extreme minimum temperature ($^\circ C$)
 
 @eq-dg was fit to each qualifying species using an integrated fitting approach and errors minimized were ending `dbh`. `r nrow(fit_stats)` species equations were estimated. Sample sizes ranged from `r min(fit_stats$n)` to `r max(fit_stats$n)` observations.
@@ -179,7 +179,7 @@ fit_stats2 %>% ggplot( aes( type, B3 )) + geom_violin(draw_quantiles=c(0.25,0.5,
 fit_stats2 %>% ggplot( aes( type, B4 )) + geom_violin(draw_quantiles=c(0.25,0.5,0.75)) + xlab("") +
     ggtitle( "Adjusts Basal Area in Larger Trees Effects" )
 fit_stats2 %>% ggplot( aes( type, B5 )) + geom_violin(draw_quantiles=c(0.25,0.5,0.75)) + xlab("")+
-    ggtitle( "Summer Precipitation Effects" ) 
+    ggtitle( "Elevation above Sea Level" ) 
 fit_stats2 %>% ggplot( aes( type, B6 )) + geom_violin(draw_quantiles=c(0.25,0.5,0.75)) + xlab("")+
     ggtitle( "Extreme Minimum Temperature Effects") 
 

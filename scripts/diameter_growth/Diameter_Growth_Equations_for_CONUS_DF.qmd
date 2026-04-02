@@ -37,7 +37,8 @@ unzip_path <- "F:/Projects/FVS Remodel/gis/Normal_1991_2020_bioclim"
 
 species <- readRDS( file=paste0(rds_path,"species.RDS") )
 trees <- readRDS( file=paste0(rds_path,"tree_dg_subset.RDS") ) 
-
+#asym_agb <- read.csv( paste0( data_path, "blup_plot_asymptotes.csv"))
+  
 # observation threshold
 min_obs <- 5000
 
@@ -45,6 +46,9 @@ fia_species <- 202
 species_name <- species$CommonName[species$SPCD == fia_species]
 tree_subset <- trees |> filter( SPCD == fia_species & !(State %in% c("NY","PA","IL","MI")) ) 
 
+#tree_subset <- tree_subset |> 
+#  inner_join( asym_agb |> 
+#              select(STATECD, UNITCD, COUNTYCD, PLOT, Asym_mean, Asym_upper), by=c("STATECD","UNITCD","COUNTYCD","PLOT"))
 
 ```
 
@@ -73,7 +77,7 @@ knitr::kable( tree_subset |> group_by( State ) |> summarize( n = length(X) ) |> 
 #| include: false
 
 
-est_dg <- function( n, dbh0, bal0, bal1, cr0, cr1, ht0, ht1, pca, emt, B0, B1, B2, B3, B4, B5, B6 )
+est_dg <- function( n, dbh0, bal0, bal1, cr0, cr1, ht0, ht1, elev, emt, B0, B1, B2, B3, B4, B5, B6 )
 
 {
     dht <- (ht1 - ht0)/n
@@ -92,7 +96,7 @@ est_dg <- function( n, dbh0, bal0, bal1, cr0, cr1, ht0, ht1, pca, emt, B0, B1, B
       dg_hat <- exp( B0 + 
                      B1 * log( (cdbh+1)^2/(ccr*cht+1.0)^B3 ) +
                      B2 * cbal^B4/( log(cdbh+2.7) ) +
-                     B5 * pca + 
+                     B5 * elev +
                      B6 * emt ) 
       
       cdbh <- cdbh + ifelse( i <= n, dg_hat, 0 )
@@ -108,11 +112,11 @@ est_dg <- function( n, dbh0, bal0, bal1, cr0, cr1, ht0, ht1, pca, emt, B0, B1, B
 
 ## Diameter Growth Prediction
 
-We built a data set for from Forest Inventory and Analysis (FIA) remeasurement data, filtering out observations with missing values for diameter at breast height (`dbh`), basal area in larger trees (`bal`), crown ratio (`cr`), total height (`ht`), site index (`si`), 2nd Principal Component of Climate and Environmental Variables representing a moisture gradient ($PCA_2$), extreme minimum temperature (`EMT`), and remeasurement intervals less than 5 years. We also restricted the data to species with $\ge$ `r min_obs` observations.
+We built a data set for from Forest Inventory and Analysis (FIA) remeasurement data, filtering out observations with missing values for diameter at breast height (`dbh`), basal area in larger trees (`bal`), crown ratio (`cr`), total height (`ht`), site index (`si`), elevation above sea level (`elev`), extreme minimum temperature (`EMT`) and remeasurement intervals less than 5 years. We also restricted the data to species with $\ge$ `r min_obs` observations.
 
 The diameter growth equation fit to these data was:
 
-$$\Delta dbh = e^{(\beta_0 + \beta_1 log(\frac{(dbh+1)^{\beta_3}}{(cr * ht + 1)^{\beta_4}}) + \beta_2 \frac{bal^{\beta_5}}{dbh+2.7} + \beta_5 PPT_{sm} + \beta_6 EMT) }$$ {#eq-dg}
+$$\Delta dbh = e^{(\beta_0 + \beta_1 log(\frac{(dbh+1)^{\beta_3}}{(cr * ht + 1)^{\beta_4}}) + \beta_2 \frac{bal^{\beta_5}}{dbh+2.7} + \beta_5 elev + \beta_6 EMT }$$ {#eq-dg}
 
 where:
 
@@ -120,8 +124,8 @@ where:
 -   $cr$ = crown ratio (fraction of total height)
 -   $ht$ = total height (feet)
 -   $bal$ = basal area in larger trees ($feet^2/acre$)
--   $PPT_{sm}$ = Summer Precipitation (mm)
--   $EMT$ = extreme minimum temperature ($^\circ C$)
+-   $elev$ = elevation above sea level (feet)
+-   $EMT$ = extreme minimum temperature (degrees C)
 
 @eq-dg was fit to each qualifying species using an integrated fitting approach and errors minimized were ending `dbh`.
 
@@ -141,15 +145,15 @@ if( species$n[species$SPCD == fia_species] >= min_obs )
     
         dg_fit <- minpack.lm::nlsLM( d$endDIA ~ est_dg( d$endGROWYR-d$startGROWYR, 
                                      d$startDIA, d$startBAL, d$endBAL, d$startCR, d$endCR, d$startHT, d$endHT,  
-                                     d$PPT_sm, d$EMT,
-                                     b0, b1, b2, b3, b4, b5, b6 ), d, 
-                       start=c( b0 = -1.3208,     
-                                b1 = -0.5836578, 
-                                b2 = -0.0953406, 
-                                b3 = 1.85592,
-                                b4 = 0.62814,
-                                b5 = 0.000677813,
-                                b6 = 0.0425137
+                                     d$ELEV, d$EMT, 
+                                     b0, b1, b2, b3, b4, b5, B6 ), d, 
+                       start=c( b0 = -1.326,     
+                                b1 = -0.57, 
+                                b2 = -0.091, 
+                                b3 = 1.87,
+                                b4 = 0.6317,
+                                b5 = -4.883e-05,
+                                B6 = 3.268e-02
                                 ), trace=F )
           
         d$dg_hat <- predict( dg_fit )
@@ -260,6 +264,13 @@ d |> ggplot( aes( lyr.2, dg_res ) ) +
     xlab("Moisture Gradient PC2") + 
     ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "(outliers removed)")
 
+d |> ggplot( aes( ELEV, dg_res ) ) + 
+    geom_point() + 
+    geom_smooth( method = 'gam',   formula = y ~ s(x, bs = "cs") ) + 
+    geom_abline( intercept = 0, slope = 0 ) +
+    ylim( -0.5, 0.5 )+
+    xlab("Elevation (feet)") + 
+    ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "(outliers removed)")
 
 d |> ggplot( aes( PPT_at, dg_res ) ) + 
     geom_point() + 
@@ -309,7 +320,7 @@ d |> ggplot( aes( SLOPE/100 * sin(ASPECT*pi/180), dg_res) ) +
     xlab( "slope * sin(aspect)") +
     ylab( "Diameter Growth Residual (in/yr) (Pred-Act)") + ggtitle( "(outliers removed)")
 
-cor( d[,c(170,114:145,164,165)], use="pairwise.complete" )[1,]
+#cor( d[,c(170,114:145,164,165)], use="pairwise.complete" )[1,]
 
 ```
 
@@ -436,6 +447,11 @@ d |> ggplot( aes( lyr.2, (dg_hat-startDIA)/(endGROWYR-startGROWYR) ) ) +
       xlab( "PCA 2 Moisture Gradient" ) +
       ylab( "Predicted Diameter Growth (inches/year)")
 
+d |> ggplot( aes( ELEV, (dg_hat-startDIA)/(endGROWYR-startGROWYR) ) ) + 
+      geom_point() + 
+      geom_smooth() +
+      xlab( "Elevation (feet)" ) +
+      ylab( "Predicted Diameter Growth (inches/year)")
 
 d |> ggplot( aes( EMT, (dg_hat-startDIA)/(endGROWYR-startGROWYR) ) ) + 
       geom_point() + 
