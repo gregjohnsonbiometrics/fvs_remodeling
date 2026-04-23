@@ -126,6 +126,7 @@ $ht_{max}$ was estimated by finding the maximum height observed in the data set 
 #| include: false
 
 fit_stats <- NULL
+hg_residuals <- NULL
 
 for( i in 1:nrow(species) )
 {
@@ -140,8 +141,8 @@ for( i in 1:nrow(species) )
     if( nrow( d ) > min_obs )
     {
       
-        hg_fit <- minpack.lm::nlsLM( d$endHT ~ est_hg( d$endGROWYR-d$startGROWYR, 
-                                      d$startHT, d$startCR, d$endCR, d$startCCFL, d$endCCFL, 
+        hg_fit <- minpack.lm::nlsLM( d$endACTUALHT ~ est_hg( d$endGROWYR-d$startGROWYR, 
+                                      d$startACTUALHT, d$startCR, d$endCR, d$startCCFL, d$endCCFL, 
                                       d$startCCH, d$endCCH,
                                       max_height, d$ELEV, d$TD, d$EMT,
                                       b1, b2, b3, b4, b5, b6, b7, b8 ), d, 
@@ -161,6 +162,11 @@ for( i in 1:nrow(species) )
                           d$startCCH, d$endCCH, max_height, d$ELEV, d$TD, d$EMT,
                           p2[1], p2[2], p2[3], p2[4], p2[5], p2[6], p2[7], p2[8] )
       d$hg_res <- (d$hg_hat - d$endACTUALHT)/(d$endGROWYR-d$startGROWYR)
+      
+      hg_residuals <- rbind( hg_residuals, d |> 
+                               select( SPCD, startDIA, startACTUALHT, startCR, startCCFL, startCCH, ELEV, TD, EMT, ASPECT, SLOPE,
+                                       State, STATECD, COUNTYCD, UNITCD, LON, LAT, PLOT, TREE, SICOND, startOWNCD, hg_res, hg_hat, -path ) |>
+                               mutate( max_height = max_height ))
       
       o <- data.frame( spcd=species$SPCD[i], n=nrow(d), Common_Name=species$CommonName[i],
                  B0=max_height, B1=p2[1], B2=p2[2], B3=p2[3], B4=p2[4], B5=p2[5], B6=p2[6], B7=p2[7], B8=p2[8],
