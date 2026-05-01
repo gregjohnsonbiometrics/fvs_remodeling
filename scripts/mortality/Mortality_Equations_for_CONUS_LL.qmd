@@ -1,0 +1,141 @@
+---
+title: "Mortality Equations for CONUS: Loblolly Pine"
+author: "Greg Johnson, David Marshall, Aaron Weiskittel"
+date: today
+format: pdf
+editor: visual
+fig-format: png
+---
+
+```{r}
+#| label: prepare_data
+#| message: false
+#| warning: false
+#| include: false
+
+library( dplyr )
+library( ggplot2 )
+library(tidyverse)
+library(sf)
+library(terra)
+
+
+reformat_nls <- function( nls_model_summary )
+{
+    mat_model <- nls_model_summary$coefficients
+    
+    dg_model <- as.data.frame(mat_model)
+    colnames(dg_model) <- c("Coef.", "Std. error", "t-stat.", "p")
+    
+    return( dg_model )
+}
+
+data_path <- "F:/Projects/FVS Remodel/data/"
+rds_path <- "F:/Projects/FVS Remodel/fvs_remodeling/rds/"
+gis_path <- "F:/Projects/FVS Remodel/gis/"
+unzip_path <- "F:/Projects/FVS Remodel/gis/Normal_1991_2020_bioclim"
+
+species <- readRDS( file=paste0(rds_path,"species.RDS") )
+trees <- readRDS( file=paste0(rds_path,"tree_mort_subset.RDS") ) 
+
+# observation threshold
+min_obs <- 5000
+
+fia_species <- 131
+species_name <- species$CommonName[species$SPCD == fia_species]
+tree_subset <- trees |> filter( SPCD == fia_species )
+
+```
+
+## Data
+
+We took the FIA mortality data subset for `r species_name`, filtered FIA plot locations with missing EPA L3 Codes. This left `r nrow(tree_subset)` observations.
+
+The observations are distributed among states as follows:
+
+```{r}
+#| label: state_observations
+#| echo: false
+#| message: false
+#| warning: false
+
+knitr::kable( tree_subset |> group_by( State ) |> summarize( n = length(X) ) |> arrange(desc(n)) )
+
+```
+
+We computed the fraction of trees dying over a 5-year period (the interval with the most observations) for classes of explanatory variables. The graphs of mean mortality are below:
+
+```{r}
+#| label: mortality trends
+#| echo: false
+#| message: false
+#| warning: false
+
+tree_subset |> mutate( dbh_class = as.integer(startDIA+0.5), periods=as.factor(endGROWYR-startGROWYR) ) |>
+  filter( periods == 5 ) |>
+  group_by( periods, dbh_class ) |>
+  summarize( pct_mortality = mean( died ) ) |>
+  ggplot( aes( dbh_class, pct_mortality ) ) +
+  geom_point() +
+  geom_smooth() +
+  ylim( c(0, 1) ) +
+  xlab( "DBH (inches)" ) + ylab( "Mortality" ) + 
+  ggtitle( "Mortality over 5-Year Period", subtitle=species_name )
+
+tree_subset |> mutate( ht_class = as.integer(startHT/5+0.5)*5, periods=as.factor(endGROWYR-startGROWYR) ) |>
+  filter( periods == 5 ) |>
+  group_by( periods, ht_class ) |>
+  summarize( pct_mortality = mean( died ) ) |>
+  ggplot( aes( ht_class, pct_mortality ) ) +
+  geom_point() +
+  geom_smooth() +
+  ylim( c(0, 1) ) +
+  xlab( "Height (feet)" ) + ylab( "Mortality" ) + 
+  ggtitle( "Mortality over 5-Year Period", subtitle=species_name )
+
+tree_subset |> mutate( cr_class = as.integer(startCR*20+0.5)/20 , periods=as.factor(endGROWYR-startGROWYR) ) |>
+  filter( periods == 5 ) |>
+  group_by( cr_class ) |>
+  summarize( pct_mortality = mean( died ) ) |>
+  ggplot( aes( cr_class, pct_mortality ) ) +
+  geom_point() +
+  geom_smooth() +
+  ylim( c(0, 1) ) +
+  xlab( "Crown Ratio (fraction of total height)" ) + ylab( "Mortality" ) + 
+  ggtitle( "Mortality over 5-Year Period", subtitle=species_name)
+
+tree_subset |> mutate( bal_class = as.integer(startBAL/10+0.5)*10, periods=as.factor(endGROWYR-startGROWYR) ) |>
+  filter( periods == 5 ) |>
+  group_by( bal_class ) |>
+  summarize( pct_mortality = mean( died ) ) |>
+  ggplot( aes( bal_class, pct_mortality ) ) +
+  geom_point() +
+  geom_smooth() +
+  ylim( c(0, 1) ) +
+  xlab( "Basal Area in Larger Trees (feet^2/acre)" ) + ylab( "Mortality" ) + 
+  ggtitle( "Mortality over 5-Year Period", subtitle=species_name)
+
+tree_subset |> mutate( ccfl_class = as.integer(startCCFL/10+0.5)*10, periods=as.factor(endGROWYR-startGROWYR) ) |>
+  filter( periods == 5 ) |>
+  group_by( ccfl_class ) |>
+  summarize( pct_mortality = mean( died ) ) |>
+  ggplot( aes( ccfl_class, pct_mortality ) ) +
+  geom_point() +
+  geom_smooth() +
+  ylim( c(0, 1) ) +
+  xlab( "Crown Competition Factor in Larger Trees (feet^2/acre)" ) + ylab( "Mortality" ) + 
+  ggtitle( "Mortality over 5-Year Period", subtitle=species_name)
+
+tree_subset |> mutate( cch_class = as.integer(startCCH*10+0.5)/10, periods=as.factor(endGROWYR-startGROWYR) ) |>
+  filter( periods == 5 ) |>
+  group_by( cch_class ) |>
+  summarize( pct_mortality = mean( died ) ) |>
+  ggplot( aes( cch_class, pct_mortality ) ) +
+  geom_point() +
+  geom_smooth() +
+  ylim( c(0, 1) ) +
+  xlab( "Crown Closure at Tree Tip (fraction of acre)" ) + ylab( "Mortality" ) + 
+  ggtitle( "Mortality over 5-Year Period", subtitle=species_name)
+
+
+```
