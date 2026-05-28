@@ -41,15 +41,12 @@ trees <- readRDS( file=paste0(rds_path,"tree_mort_subset.RDS") )
 # observation threshold
 min_obs <- 5000
 
-#fia_species <- 202
-#species_name <- species$CommonName[species$SPCD == fia_species]
 tree_subset <- trees |> 
                filter( !is.na(startCR) & !is.na(endHT) ) |>
                mutate( endCR=ifelse(is.na(endCR), startCR, endCR ) )
   
 
 ```
-
 
 ## Data
 
@@ -70,7 +67,9 @@ knitr::kable( tree_subset |> group_by( State ) |> summarize( n = length(X) ) |> 
 
 ## Base Rate Mortality
 
-Daniel Kanneman and Amos Tversky^[\tiny Kahneman D. and Tversky, A. (1973). On the Psychology of Prediction. Psychology Review. 80(4), 237-251. doi: 10.1037/h0034747] made the point that any putative model should improve upon the *base rate*. In our case, the base rate is the average mortality rate for each species accounting for no other factors. We calculate this by taking the annualized mean mortality rate for each species in the data set.
+Daniel Kanneman and Amos Tversky[^1] made the point that any putative model should improve upon the *base rate*. In our case, the base rate is the average mortality rate for each species accounting for no other factors. We calculate this by taking the annualized mean mortality rate for each species in the data set.
+
+[^1]: \tiny Kahneman D. and Tversky, A. (1973). On the Psychology of Prediction. Psychology Review. 80(4), 237-251. doi: 10.1037/h0034747
 
 ```{r}
 #| label: mortality_base_rate
@@ -144,7 +143,6 @@ neg_log_lik <- function( b, periods, startDIA, endDIA, startHT, endHT, startCR, 
 }
 
 ```
-
 
 ```{r}
 #| label: fit_species
@@ -248,7 +246,7 @@ residuals <- bind_rows( results )
 
 ```
 
-The base rate estimates for `r nrow(parms)` species are distributed as shown in @fig-base_rate. Most base rate annual survival estimates are between 98 and 100%. 
+The base rate estimates for `r nrow(parms)` species are distributed as shown in @fig-base_rate. Most base rate annual survival estimates are between 98 and 100%.
 
 ```{r}
 #| label: fig-base_rate
@@ -265,9 +263,7 @@ parms |> ggplot( aes( 1-exp(-exp(b0)) ) ) + geom_histogram() +
 
 ## Base Rate Residuals
 
-The following residual graphs show the average errors for all species over classes of possible explanatory variables. 
-
-
+The following residual graphs show the average errors for all species over classes of possible explanatory variables.
 
 ```{r}
 #| label: residual_analysis
@@ -420,7 +416,6 @@ x %>% ggplot( aes( X, Y, color=Hmisc::cut2(mean_res,c(-0.01,0.01) )) ) +
 
 ```
 
-
 ## Proposed Model
 
 The model we propose to explain more of the mortality variation over the base rate is a Gompit function:
@@ -429,9 +424,9 @@ $$ P_{surv} = 1 - e^{(-e^{(\beta_0 + \beta_1 (cr+0.01)^{\beta_2} + \beta_3 cch^{
 
 where:
 
-* $P_{surv}$ : probability of survival
-* $cr$ : crown ratio
-* $cch$ : crown closure at tree tip
+- $P_{surv}$ : probability of survival
+- $cr$ : crown ratio
+- $cch$ : crown closure at tree tip
 
 We used an integrative fitting approach to account for varying period lengths and we minimized the negative log-likelihood for each species separately.
 
@@ -486,7 +481,6 @@ survival <- function( b, periods, startDIA, endDIA,
 
 ```
 
-
 ```{r}
 #| label: fit_species3
 #| eval: false
@@ -515,7 +509,7 @@ plan(multisession) # Uses background R sessions (works on Windows, Mac, and Linu
 i <- 1
 while( i <= nrow(parms) )
 {
-  results <- future_lapply( c(i:min(i+4,nrow(parms))), function(j) 
+  results <- future_lapply( c(i:min(i+5,nrow(parms))), function(j) 
   {  
     print( j )
     # Initialize empty outputs for iterations that don't meet the 'if' criteria
@@ -523,21 +517,15 @@ while( i <= nrow(parms) )
   
     if( parms$n[j] >= min_obs ) 
     {
-      p <- parms3 |> filter( SPCD == parms$SPCD[j] )
-      if( nrow(p) == 0 )
-      {
-        p <- parms3[1,]
-        p$SPCD <- parms$SPCD[j]
-        p$CommonName <- parms$CommonName[j]
-      }
-      
-      sp_id <- as.character( parms$SPCD[j] )
+      p <- parms[j,]
+
+      sp_id <- as.character( p$SPCD )
       d <- tree_split[[sp_id]]
       
       if( nrow(d) >= min_obs ) 
       {
         mort_fit <- optim(
-          par = c(p$b0, p$b1, p$b2, p$b3, 0.3688843), 
+          par = c( 1.891037, -0.02895643, -1.2522242, -0.5365716, 0.3688843), 
           fn = neg_log_lik,
           method = "BFGS",
           periods = d$endGROWYR - d$startGROWYR,
@@ -575,16 +563,15 @@ while( i <= nrow(parms) )
   i <- i + 5
 }
 
-#parms3 <- rbind( parms3, parms3a )
+parms3 <- parms3a
 
 # 4. Close background workers
 plan(sequential)
   
-saveRDS( parms3, file=paste0( rds_path, "mort_parm_base_rate_cr_cch.RDS") )
+saveRDS( parms3, file=paste0( rds_path, "mort_parm_base_rate_cr_cch2.RDS") )
 
 
 ```
-
 
 ```{r}
 #| label: get_3rd_estimates
@@ -592,7 +579,7 @@ saveRDS( parms3, file=paste0( rds_path, "mort_parm_base_rate_cr_cch.RDS") )
 #| message: false
 #| warning: false
 
-parms3<- readRDS( paste0( rds_path, "mort_parm_base_rate_cr_cch.RDS") )
+parms3<- readRDS( paste0( rds_path, "mort_parm_base_rate_cr_cch2.RDS") )
 
 residuals3 <- NULL
 results <- list()
@@ -621,7 +608,7 @@ residuals3 <- bind_rows( results )
 
 ```
 
-The distributions of the parameter estimates for all species are shown below.
+We were able to make parameter estimates for `r nrow(parms3)` species. The distributions of the estimates for these species are shown below.
 
 ```{r}
 #| label: 3rd_estimates
@@ -657,7 +644,7 @@ parms3 |> filter( n >= min_obs ) |> ggplot( aes( b4 ) ) + geom_histogram() +
 
 ```
 
-@fig-nll shows that all species' negative log likelihoods were reduced with the proposed model. 
+@fig-nll shows that all species' negative log likelihoods were reduced with the proposed model.
 
 ```{r}
 #| label: fig-nll
@@ -674,7 +661,6 @@ parms3 |> filter( n >= min_obs ) |>
   ggtitle( "All Species")
 
 ```
-
 
 ```{r}
 #| label: tbl-nlle
@@ -698,7 +684,6 @@ knitr::kable( suspect_species, col.names = c("SPCD", "Common Name", "N") )
 ## Proposed Model Residuals
 
 The following residual graphs show the average errors for all species where the fit improved over the base rate over classes of possible explanatory variables.
-
 
 ```{r}
 #| label: residual_analysis3
