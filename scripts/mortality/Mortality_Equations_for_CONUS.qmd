@@ -43,14 +43,15 @@ min_obs <- 5000
 
 tree_subset <- trees |> 
                filter( !is.na(startCR) & !is.na(endHT) ) |>
-               mutate( endCR=ifelse(is.na(endCR), startCR, endCR ) )
+               mutate( endCR=ifelse(is.na(endCR), startCR, endCR ),
+                       endCCH=ifelse(endCCH < startCCH, startCCH, endCCH))
   
 
 ```
 
 ## Data
 
-We took the FIA mortality data subset, filtered out missing data (primarily crown ratio and heights). This left `r nrow(tree_subset)` observations.
+We took the FIA mortality data subset, filtered out missing data (primarily crown ratio and heights). This left `r nrow(tree_subset)` observations. We found a number of observations with large decreases in crown closure at tree tip (`CCH`). For this analysis, we set the change in `CCH` to 0.0 for those observations by making the ending measurement equal to the initial measurement.
 
 The observations are distributed among states is show in @tbl-state.
 
@@ -559,11 +560,10 @@ while( i <= nrow(parms) )
   # 3. Clean up and combine the list of results into the final dataframes
   parms3a <- bind_rows( parms3a, lapply( results, `[[`, "parms" ) )
   
-  print( i )
   i <- i + 5
 }
 
-parms3 <- parms3a
+parms3 <- rbind( parms3, parms3a )
 
 # 4. Close background workers
 plan(sequential)
