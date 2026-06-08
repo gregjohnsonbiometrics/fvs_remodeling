@@ -526,7 +526,7 @@ while( i <= nrow(parms) )
       if( nrow(d) >= min_obs ) 
       {
         mort_fit <- optim(
-          par = c( 1.891037, -0.02895643, -1.2522242, -0.5365716, 0.3688843), 
+          par = c( p$b0, -0.02895643, -1.2522242, -0.5365716, 0.3688843), 
           fn = neg_log_lik,
           method = "BFGS",
           periods = d$endGROWYR - d$startGROWYR,
@@ -538,7 +538,7 @@ while( i <= nrow(parms) )
           startBAL = d$startBAL, endBAL = d$endBAL,
           status = !d$died
         ) 
-  
+        
         parms_out <- data.frame(
           SPCD = p$SPCD, 
           CommonName = p$CommonName,
@@ -560,7 +560,7 @@ while( i <= nrow(parms) )
   # 3. Clean up and combine the list of results into the final dataframes
   parms3a <- bind_rows( parms3a, lapply( results, `[[`, "parms" ) )
   
-  i <- i + 5
+  i <- i + 6
 }
 
 parms3 <- rbind( parms3, parms3a )
@@ -644,7 +644,20 @@ parms3 |> filter( n >= min_obs ) |> ggplot( aes( b4 ) ) + geom_histogram() +
 
 ```
 
-@fig-nll shows that all species' negative log likelihoods were reduced with the proposed model.
+There are `r nrow( parms3 |> filter( b0 < 0 ) )` species with parameter estimates that diverge significantly from the rest of the species. These species are listed in @tbl-suspicious.
+
+```{r}
+#| label: tbl-suspicious
+#| echo: false
+#| message: false
+#| warning: false
+
+knitr::kable( parms3 |> filter( b0 < 0 ) |> select( SPCD, CommonName, n ), col.names = c("FIA SPCD", "Common Name", "N Obs."),
+              caption="Species with Extreme Parameter Estimates")
+  
+```
+
+@fig-nll shows that all species' negative log likelihoods were reduced over the base rate with the proposed model.
 
 ```{r}
 #| label: fig-nll
@@ -662,24 +675,7 @@ parms3 |> filter( n >= min_obs ) |>
 
 ```
 
-```{r}
-#| label: tbl-nlle
-#| eval: false
-#| message: false
-#| warning: false
-#| include: false
-#| tbl-cap: Species with Poorer Performance than Base Rate
-
-suspect_species <- parms3 |> filter( n >= min_obs ) |>
-  inner_join( parms, by="SPCD", suffix=c("",".br")) |> 
-  mutate( difference=nll - nll.br ) |>
-  filter( difference > 0 ) |> 
-  arrange( difference ) |>
-  select( SPCD, CommonName, n ) 
-
-knitr::kable( suspect_species, col.names = c("SPCD", "Common Name", "N") )
-
-```
+\pagebreak
 
 ## Proposed Model Residuals
 
@@ -765,8 +761,9 @@ residuals3 |> mutate( cch_class = as.integer(startCCH*10+0.5)/10 ) |>
   geom_smooth() +
   ylim( c(-0.03, 0.03) ) +
   geom_abline( intercept = 0, slope = 0 ) +
-  xlab( "Crown Closure at Tree Tip (fraction of acre)" ) + ylab( "Mortality Residual (pred-act)" ) + 
-  ggtitle( "Mortality Residuals", subtitle = "Revised Model (outliers removed)" )
+  xlab( "Crown Closure at Tree Tip (fraction of acre)" ) + ylab( "Mortality Residual (pred-act)" ) +
+  ggtitle( "Mortality Residuals", subtitle = "Revised Model (outliers removed)" ) 
+
 
 residuals3 |> mutate( emt_class = as.integer(EMT*10+0.5)/10 ) |>
   group_by( emt_class ) |>
@@ -833,3 +830,4 @@ x %>% ggplot( aes( X, Y, color=Hmisc::cut2(mean_res,c(-0.03,0.03) )) ) +
 
 
 ```
+
