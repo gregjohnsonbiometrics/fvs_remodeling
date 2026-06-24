@@ -16,7 +16,7 @@ Our objective is to grow any tree list from plots in CONUS in a single, variant-
 - Reduce or eliminate site index as a productivity measure, and
 - Require no calibration when verified against FIA data.
 
-A presentation delivered to the Western Mensurationists on June 23, 2026 summarizes our work to date.
+A [presentation](./pdfs/GJohnsonWMens2026-v2.pdf) delivered to the Western Mensurationists on June 23, 2026 summarizes our work to date.
 
 ## Progress 
 ### We have preliminary equations developed for:
