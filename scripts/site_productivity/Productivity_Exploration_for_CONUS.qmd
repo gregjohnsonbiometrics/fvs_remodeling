@@ -1,0 +1,150 @@
+---
+title: "Productivity Exploration for CONUS"
+author: "Greg Johnson, David Marshall, Aaron Weiskittel"
+date: today
+format: pdf
+editor: visual
+fig-format: png
+---
+
+```{r}
+#| label: prepare_data
+#| message: false
+#| warning: false
+#| include: false
+
+library( dplyr )
+library( ggplot2 )
+library(tidyverse)
+library(sf)
+library(terra)
+
+
+data_path <- "F:/Projects/FVS Remodel/data/"
+rds_path <- "F:/Projects/FVS Remodel/fvs_remodeling/rds/"
+gis_path <- "F:/Projects/FVS Remodel/gis/"
+unzip_path <- "F:/Projects/FVS Remodel/gis/Normal_1991_2020_bioclim"
+
+trees <- readRDS( file = paste0(rds_path,"tree_data.RDS") ) 
+
+edata <- trees |> select( PLOT, STATECD, UNITCD, COUNTYCD, LAT, LON, ELEV, SICOND, SISP,
+                      AHM, bFFP, CMD, CMI, DD_0, DD_18, DD18, DD5, eFFP, Eref, EXT, 
+                      DD1040, FFP, MAP, MAT, MCMT, MSP, MWMT, NFFD, PAS, PPT_at, PPT_sm, PPT_wt, PPT_sp,
+                      RH, SHM, Tave_at, Tave_sm, Tave_sp, Tave_wt, TD, EMT, eFFP, X, Y, State ) |>
+    group_by( STATECD, State, UNITCD, COUNTYCD, PLOT, LAT, LON, X, Y  ) |>
+    slice( 1 ) |>
+    filter( !is.na(ELEV) & !is.na(AHM) )
+
+```
+
+```{r}
+#| message: false
+#| warning: false
+
+as.data.frame(cor( edata[,c(7:41)], use="pairwise.complete.obs" ))[2,]
+
+cor( edata[,c("SICOND", "bFFP","DD_0","DD_18","eFFP","FFP","MCMT","NFFD","Tave_wt","EMT")], use="pairwise.complete.obs" )
+
+pc <- prcomp( edata[,c("bFFP","DD_0","DD_18","eFFP","FFP","MCMT","NFFD","Tave_wt","EMT")])
+
+cor( edata$SICOND, pc$x, use="pairwise.complete.obs" )
+
+# bFFP -0.41
+# DD_0 -0.44
+# DD_18 -0.42
+# eFFP 0.44
+# FFP 0.43
+# MCMT 0.42
+# NFFD 0.46
+# Tave_wt 0.43
+# EMT 0.51
+
+
+as.data.frame(cor( d[,c(172,114:145,169,170,59)], use="pairwise.complete.obs" ))[1,]
+
+
+pc <- prcomp( d[c("MAT",
+"FFP",
+"MWMT",
+"NFFD",
+"Tave_sm",
+"DD18",
+"bFFP")] )
+pc$rotation
+
+edata |> mutate( pc_1 = 0.974*DD_18 + 0.218*DD_0, pc_2 = 0.21*DD_18 - 0.971*DD_0 ) |> ungroup() |>
+    select( SICOND, pc_1, pc_2 ) |> summarise( cor1 = cor(SICOND, pc_1, use = "pairwise.complete.obs"),
+                                               cor2 = cor(SICOND, pc_2, use = "pairwise.complete.obs"))
+
+cor( edata[,c("ELEV","PPT_sm","Tave_sm","bFFP","EMT")], use="pairwise.complete.obs" )
+
+pc <- princomp( edata[,c("PPT_sm","Tave_sm","bFFP")] )
+
+pc$loadings
+
+edata2 <- edata |> mutate( pc_1 = 0.985*PPT_sm -0.169*bFFP,
+                           pc_2 = 0.170*PPT_sm -0.105*Tave_sm + 0.980*bFFP )
+    
+    # mutate( pc_1 = 0.985*PPT_sm -0.169*bFFP,
+    #                        pc_2 = 0.172*PPT_sm -0.101*Tave_sm + 0.948*bFFP - 0.248*EMT )
+
+cor( edata2[,c("ELEV","pc_1","pc_2")], use="pairwise.complete.obs" )
+
+
+```
+
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+
+x <- edata2 |> 
+  group_by( STATECD, UNITCD, COUNTYCD, ) |> 
+  summarize( mean_elev = mean( ELEV ), 
+             mean_PPT_sm = mean( PPT_sm ),
+             mean_Tave_sm = mean(Tave_sm ),
+             mean_bFFP = mean( bFFP ),
+             mean_emt = mean( EMT ),
+             mean_pc1 = mean( pc_1 ),
+             mean_pc2 = mean( pc_2 ),
+             X=mean(X), Y=mean(Y) )
+
+x %>% ggplot( aes( X, Y, color=mean_elev ) ) + 
+                  geom_point() + 
+                  viridis::scale_color_viridis(discrete = F ) +
+                  labs( color="Elevation           ", x="", y="" )
+
+x %>% ggplot( aes( X, Y, color=mean_emt ) ) + 
+                  geom_point() + 
+                  viridis::scale_color_viridis(discrete = F ) +
+                  labs( color="EMT", x="", y="") 
+
+x %>% ggplot( aes( X, Y, color=mean_PPT_sm ) ) + 
+                  geom_point() + 
+                  viridis::scale_color_viridis(discrete = F ) +
+                  labs( color="Summer Precipitation", x="", y="") 
+
+x %>% ggplot( aes( X, Y, color=mean_Tave_sm ) ) + 
+                  geom_point() + 
+                  viridis::scale_color_viridis(discrete = F ) +
+                  labs( color="Summer Temperature", x="", y="") 
+
+x %>% ggplot( aes( X, Y, color=mean_bFFP ) ) + 
+                  geom_point() + 
+                  viridis::scale_color_viridis(discrete = F ) +
+                  labs( color="bFFP", x="", y="") 
+
+x %>% ggplot( aes( X, Y, color=mean_pc1 ) ) + 
+                  geom_point() + 
+                  viridis::scale_color_viridis(discrete = F ) +
+                  labs( color="pc 1", x="", y="") 
+
+x %>% ggplot( aes( X, Y, color=mean_pc2 ) ) + 
+                  geom_point() + 
+                  viridis::scale_color_viridis(discrete = F ) +
+                  labs( color="pc 2", x="", y="") 
+
+```
+

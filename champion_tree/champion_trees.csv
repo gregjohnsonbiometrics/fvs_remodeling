@@ -1,0 +1,41 @@
+SPCD,COMMON_NAME,GENUS,SPECIES,HEIGHT_M,DBH_CM,CROWN_WIDTH_M,SOURCE,YEAR
+15,Eastern White Pine,Pinus,strobus,64.01,225.00,32.00,NCTP 2024 Register,2023
+16,Pitch Pine,Pinus,rigida,35.05,156.00,20.00,NCTP 2024 Register,2023
+17,Shortleaf Pine,Pinus,echinata,50.29,151.00,23.00,NCTP 2024 Register,2023
+19,Loblolly Pine,Pinus,taeda,51.82,190.00,28.00,NCTP 2024 Register,2023
+22,Virginia Pine,Pinus,virginiana,33.53,117.00,18.00,NCTP 2024 Register,2023
+23,Eastern Redcedar,Juniperus,virginiana,38.10,137.00,14.00,NCTP 2024 Register,2023
+65,American Basswood,Tilia,americana,47.24,204.00,27.00,NCTP 2024 Register,2023
+68,American Elm,Ulmus,americana,43.28,243.00,30.00,NCTP 2024 Register,2023
+69,Slippery Elm,Ulmus,rubra,39.62,175.00,25.00,NCTP 2024 Register,2023
+70,Rock Elm,Ulmus,thomasii,36.27,172.00,22.00,NCTP 2024 Register,2023
+105,Sugar Maple,Acer,saccharum,53.04,270.00,32.00,NCTP 2024 Register,2023
+108,Red Maple,Acer,rubrum,42.67,214.00,28.00,NCTP 2024 Register,2023
+110,Silver Maple,Acer,saccharinum,43.89,217.00,30.00,NCTP 2024 Register,2023
+120,Black Cherry,Prunus,serotina,43.89,168.00,25.00,NCTP 2024 Register,2023
+122,Eastern Hophornbeam,Ostrya,virginiana,29.26,97.00,15.00,NCTP 2024 Register,2023
+202,Black Walnut,Juglans,nigra,47.24,213.00,29.00,NCTP 2024 Register,2023
+203,Butternut,Juglans,cinerea,41.15,143.00,22.00,NCTP 2024 Register,2023
+205,Pecan,Carya,illinoinensis,45.72,204.00,31.00,NCTP 2024 Register,2023
+206,Shellbark Hickory,Carya,laciniosa,47.24,196.00,26.00,NCTP 2024 Register,2023
+207,Shagbark Hickory,Carya,ovata,44.80,175.00,24.00,NCTP 2024 Register,2023
+241,Black Oak,Quercus,velutina,42.67,183.00,27.00,NCTP 2024 Register,2023
+242,Cherrybark Oak,Quercus,pagoda,48.77,189.00,28.00,NCTP 2024 Register,2023
+243,Chestnut Oak,Quercus,montana,42.67,195.00,26.00,NCTP 2024 Register,2023
+246,Laurel Oak,Quercus,laurifolia,39.62,154.00,21.00,NCTP 2024 Register,2023
+248,Live Oak,Quercus,virginiana,24.38,297.00,39.00,NCTP 2024 Register,2023
+250,Water Oak,Quercus,nigra,35.05,127.00,19.00,NCTP 2024 Register,2023
+260,White Oak,Quercus,alba,44.80,249.00,30.00,NCTP 2024 Register,2023
+262,Willow Oak,Quercus,phellos,35.05,135.00,20.00,NCTP 2024 Register,2023
+313,Bur Oak,Quercus,macrocarpa,50.29,305.00,35.00,NCTP 2024 Register,2023
+318,Northern Red Oak,Quercus,rubra,47.24,240.00,31.00,NCTP 2024 Register,2023
+404,American Sycamore,Platanus,occidentalis,52.12,259.00,35.00,NCTP 2024 Register,2023
+408,Sweetgum,Liquidambar,styraciflua,46.33,197.00,27.00,NCTP 2024 Register,2023
+409,Tupelo,Nyssa,aquatica,33.53,132.00,19.00,NCTP 2024 Register,2023
+410,Black Tupelo,Nyssa,sylvatica,34.74,124.00,17.00,NCTP 2024 Register,2023
+500,Baldcypress,Taxodium,distichum,50.29,239.00,26.00,NCTP 2024 Register,2023
+501,Atlantic White-cedar,Chamaecyparis,thyoides,25.91,89.00,12.00,NCTP 2024 Register,2023
+702,Cottonwood,Populus,deltoides,49.07,281.00,34.00,NCTP 2024 Register,2023
+703,Bigtooth Aspen,Populus,grandidentata,27.43,101.00,15.00,NCTP 2024 Register,2023
+704,Trembling Aspen,Populus,tremuloides,28.65,88.00,14.00,NCTP 2024 Register,2023
+830,Douglas-fir,Pseudotsuga,menziesii,75.59,274.00,33.00,NCTP 2024 Register,2023

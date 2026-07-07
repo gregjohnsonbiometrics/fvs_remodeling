@@ -1,0 +1,897 @@
+---
+title: "CONUS Regional HT-DBH Curves Using FIA Data"
+subtitle: "Working Draft 3"
+author: "David Marshall, Greg Johnson, Aaron Weiskittel"
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+output:
+  pdf_document: default
+  toc: false
+---
+  
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = FALSE, message=FALSE, warning = FALSE)
+options(scipen=999)
+
+# load libraries used
+
+suppressPackageStartupMessages(library(dplyr))
+#library(ggplot2)
+#library(gridExtra)
+library(pander)
+
+```
+
+
+```{r read_fits, eval=TRUE, echo=FALSE}
+
+# read fits
+
+file.name <- "C:/Users/DavidFolder/Projects/FIA_Data/ModelingProject/HT_DBH_Modeling/CONUS_HDfit_Model_1.CSV"
+dataM1 <- read.csv(file.name, header=TRUE, sep=",")
+dataHDfits <- dataM1
+
+file.name <- "C:/Users/DavidFolder/Projects/FIA_Data/ModelingProject/HT_DBH_Modeling/CONUS_HDfit_Model_2.CSV"
+dataM2 <- read.csv(file.name, header=TRUE, sep=",")
+dataHDfits <- rbind(dataHDfits, dataM2)
+
+file.name <- "C:/Users/DavidFolder/Projects/FIA_Data/ModelingProject/HT_DBH_Modeling/CONUS_HDfit_Model_3.CSV"
+dataM3 <- read.csv(file.name, header=TRUE, sep=",")
+dataHDfits <- rbind(dataHDfits, dataM3)
+
+file.name <- "C:/Users/DavidFolder/Projects/FIA_Data/ModelingProject/HT_DBH_Modeling/CONUS_HDfit_Model_4.CSV"
+dataM4 <- read.csv(file.name, header=TRUE, sep=",")
+dataHDfits <- rbind(dataHDfits, dataM4)
+
+file.name <- "C:/Users/DavidFolder/Projects/FIA_Data/ModelingProject/HT_DBH_Modeling/CONUS_HDfit_Model_5.CSV"
+dataM5 <- read.csv(file.name, header=TRUE, sep=",")
+dataHDfits <- rbind(dataHDfits, dataM5)
+
+file.name <- "C:/Users/DavidFolder/Projects/FIA_Data/ModelingProject/HT_DBH_Modeling/CONUS_HDfit_Model_6.CSV"
+dataM6 <- read.csv(file.name, header=TRUE, sep=",")
+dataHDfits <- rbind(dataHDfits, dataM6)
+
+```
+
+
+# 1.0 Introduction
+
+This work is part of a project to develop a continental US (CONUS) growth model using Forest Inventory & Analysis (FIA) data for all FIA species without regional variants. The component covered here is the regional tree height (HT-DBH) models. These models are used for missing data and in some cases height growth for minor species.
+
+Regional height growth models are problematic because if used as is they provide bias height eastimates. The reason for this is that regional HT-DBH curves (fit from a collection of plots or stand) tend to have steeper slopes than curves for individual stands (or plots) which tend to have flatten out over time. This bias can be minimized by localizing the regional curves buy calibrating it with tree HT and DBH measurements from the stand (or plot) of interest.
+
+The objective here is to develop regional HT-DBH curves for as many species as possible using a consistent equation for all species that is easily calibrated by users.
+
+# 2.0 Methods
+
+The following models were selected for fitting as they are widely used and have good performance in published comparisons (e.g., Curtis 1967; Huang and Titus (1992), Zhang 1997, Martin and Flewelling 1998).
+
+$$
+HT = bh + exp(B1 + B2*DBH^{-1.0})  \\
+\tag{1} 
+$$
+$$
+HT = bh + exp(B1 + B2*DBH^{B3})  \\
+\tag{2} 
+$$
+$$
+HT = bh + B1*exp(1.0-B2*DBH)^{B3}  \\
+\tag{3} 
+$$
+$$
+HT = bh + exp(B1+B2/(DBH+1.0))  \\
+\tag{4} 
+$$
+$$
+HT = bh + exp(B1+B2/(DBH+B3))  \\
+\tag{5} 
+$$
+$$
+HT = bh + B1*(1.0-exp(B2*DBH))^{B3} 
+\tag{6} 
+$$
+where bh is the breast height (4.5 feet), HT is total height (feet) and DBH is diameter at breast height (inches).
+
+Models 1 and 2 are a Schumacher (1939) type curves (Curtis 1967). Model 3 is the Chapman-Richards function. Models 4 and 5 are often used in FVS (Wykoff and others 1982). Model 6 is a Weibull type curve.
+
+Each model was fit by species that had at least 3 observations. Fits were weighted by 1/DBH (based on residual plots and published results) and were fit using the "nls" function in R with 150 interation limit. The fits were evaluated for reasonable parameters (correct signs), low root mean square error (RMSE) and minimum bias.
+
+The data is all live FIA trees with a measured HT (filtered bu HTCD=1) and DBH greater than 0 and HT greater then 4.5. This provided 9,509,054 observations for 438 species (excluding AK). 
+
+# 3.0 Results
+
+The table below summarizes the number of species fit and no fit for models 1 through 6.
+
+- Nspecies = total number of species
+- Nfit = number of species fit
+- Nminobs = number of species that did not have the required minimum number of trees
+- Nnofit = number of species that did not successfully fit (convergence, maximum interates, etc.)
+- Npoorcoef = number of fits that had coefficients that were the wrong sign
+- N_Bns = number of fits with nonsignificant (Ho=0) parameters
+- N_Bgood = number of "good" fits
+- N_B3test = number of fits that the B3 parameter was not different from -1 (model 2) or 1 (model 4).
+
+Significance was tested at the alpha 0.05 level which is is arbitrary since there might be justification of accepting fits with higher alpha levels. Also, for models 2 and 5 it may not actually be important of the B3 parameter is different form -1 or 1, respectively, but is given here mostly for interest.
+
+```{r fit_summaries_part1, eval=TRUE, echo=FALSE, dev='png'}
+
+#`r format(Sys.Date(), "%B %d, %Y")`
+
+# part 1 - summarize fits
+
+# total species
+out1 <- dataHDfits %>% group_by(model) %>%  summarize(Nspecies=n())
+
+# number of species fit
+#out2 <- dataHDfits %>% group_by(model) %>% filter(is.na(B1) == FALSE) %>% summarize(Nfit=n())
+out2 <- dataHDfits %>% group_by(model) %>% filter(ierr == 0) %>% summarize(Nfit=n())
+out <- merge(out1, out2, by=c("model"), all.x=TRUE)
+#out <- rbind(t(out1), t(out2[,2]))
+
+# number of species with too few observations
+out2a <- dataHDfits %>% group_by(model) %>% filter(ierr == 1) %>% summarize(Nminobs=n())
+out <- merge(out, out2a, by=c("model"), all.x=TRUE)
+
+# number of species that did not fit
+out2b <- dataHDfits %>% group_by(model) %>% filter(ierr == 2) %>% summarize(Nnofit=n())
+out <- merge(out, out2b, by=c("model"), all.x=TRUE)
+
+# number of species with unreasonable parameters
+out2c <- dataHDfits %>% group_by(model) %>% filter(ierr == 3) %>% summarize(Npoorcoef=n())
+out <- merge(out, out2c, by=c("model"), all.x=TRUE)
+
+# fits with non-significant parameters
+out3 <- dataHDfits %>% group_by(model) %>% 
+   filter((is.na(B1) == FALSE & pB1 > 0.05) | (is.na(B2) == FALSE & pB2 > 0.05) | (is.na(B3) == FALSE & B3 > 0 & pB3 > 0.05)) %>%
+   #filter((B1 > 0 & pB1 > 0.05) | (B2 > 0 & pB2 > 0.05) | (is.na(B3) == FALSE & B3 > 0 & pB3 > 0.05)) %>%
+   summarize(N_Bns=n())
+out <- merge(out, out3, by=c("model"), all.x=TRUE)
+
+# fits "good" fits
+out4 <- dataHDfits %>% group_by(model) %>% 
+   filter((is.na(B1) == FALSE & pB1 <= 0.05) | (is.na(B2) == FALSE & pB2 <= 0.05) | (is.na(B3) == FALSE & B3 > 0 & pB3 <= 0.05)) %>%
+   summarize(N_Bgood=n())
+out <- merge(out, out4, by=c("model"), all.x=TRUE)
+
+# model 2 B3 significantly different from -1
+junk <- subset(dataHDfits, model == 2)
+out5a <- junk %>% filter(is.na(B3_test) == FALSE & B3_test <= 0.05) %>% summarize(N_B3test=n())
+out5a <- cbind(model=c(2),out5a)
+#out <- merge(out, out5a, by=c("model"), all.x=TRUE)
+
+# model 5 B3 significantly different from 1
+junk <- subset(dataHDfits, model == 5)
+out5b <- junk %>% filter(is.na(B3_test) == FALSE & B3_test <= 0.05) %>% summarize(N_B3test=n())
+out5b <- cbind(model=c(5),out5b)
+#out <- merge(out, out5b, by=c("model"), all.x=TRUE)
+out5 <- rbind(out5a, out5b)
+out <- merge(out, out5, by=c("model"), all.x=TRUE)
+
+pander(t(out), style="simple", justify = c("left"), 
+       caption="Summary of fits by model (1-6).")
+
+```
+
+The table below summarizes the resulting mean RMSE and mean bias for models 1 through 6. Note that there are different numbers of fits for each model (see table above) so comparisons need to be done with some caution.
+
+- minRMSEcount = the number of species fits that had the lowest RMSE 
+- meanRMSE = the unweighted mean RMSE for successful fits (all species)
+- meanRMSEw = the weighted mean RMSE for successful fits (all species)
+- minBIAScount = the number of species fits that had the lowest bias 
+- meanBIAS = the unweighted mean bias for successful fits (all species)
+- meanBIASw = the weighted mean bias for successful fits (all species)
+
+```{r fit_summaries_part2, eval=TRUE, echo=FALSE, dev='png'}
+
+# part 2 - summarize fit statistics (RMSE and mean bias and residuals)
+
+junk1 <- subset(dataHDfits, model == 1 & ierr == 0, select=c("model","SPCD","RMSE","meanBIAS","meanAbsBIAS"))
+names(junk1) <- c("model","SPCD","RMSE_1","meanBIAS_1","meanAbsBIAS_1")
+junk2 <- subset(dataHDfits, model == 2 & ierr == 0, select=c("model","SPCD","RMSE","meanBIAS","meanAbsBIAS"))
+names(junk2) <- c("model","SPCD","RMSE_2","meanBIAS_2","meanAbsBIAS_2")
+junk3 <- subset(dataHDfits, model == 3 & ierr == 0, select=c("model","SPCD","RMSE","meanBIAS","meanAbsBIAS"))
+names(junk3) <- c("model","SPCD","RMSE_3","meanBIAS_3","meanAbsBIAS_3")
+junk4 <- subset(dataHDfits, model == 4 & ierr == 0, select=c("model","SPCD","RMSE","meanBIAS","meanAbsBIAS"))
+names(junk4) <- c("model","SPCD","RMSE_4","meanBIAS_4","meanAbsBIAS_4")
+junk5 <- subset(dataHDfits, model == 5 & ierr == 0, select=c("model","SPCD","RMSE","meanBIAS","meanAbsBIAS"))
+names(junk5) <- c("model","SPCD","RMSE_5","meanBIAS_5","meanAbsBIAS_5")
+junk6 <- subset(dataHDfits, model == 6 & ierr == 0, select=c("model","SPCD","RMSE","meanBIAS","meanAbsBIAS"))
+names(junk6) <- c("model","SPCD","RMSE_6","meanBIAS_6","meanAbsBIAS_6")
+
+#dataRMSE <- merge(junk1[,c("SPCD","RMSE_1")], junk2[,c("SPCD","RMSE_2")], by=c("SPCD"), all=TRUE)
+#dataRMSE <- merge(dataRMSE, junk3[,c("SPCD","RMSE_3")], by=c("SPCD"), all=TRUE)
+#dataRMSE <- merge(dataRMSE, junk4[,c("SPCD","RMSE_4")], by=c("SPCD"), all=TRUE)
+#dataRMSE <- merge(dataRMSE, junk5[,c("SPCD","RMSE_5")], by=c("SPCD"), all=TRUE)
+
+## summarize RMSE
+
+# 1. count lowest RMSE by model
+# 2. minimum RMSE
+# 3. average difference in RMSE between models (largest to smallest RMSE) 
+
+dataRMSE <- merge(junk1[,c("SPCD","RMSE_1")], junk2[,c("SPCD","RMSE_2")], by=c("SPCD"), all=TRUE)
+dataRMSE <- merge(dataRMSE, junk3[,c("SPCD","RMSE_3")], by=c("SPCD"), all=TRUE)
+dataRMSE <- merge(dataRMSE, junk4[,c("SPCD","RMSE_4")], by=c("SPCD"), all=TRUE)
+dataRMSE <- merge(dataRMSE, junk5[,c("SPCD","RMSE_5")], by=c("SPCD"), all=TRUE)
+dataRMSE <- merge(dataRMSE, junk6[,c("SPCD","RMSE_6")], by=c("SPCD"), all=TRUE)
+
+dataRMSE$minRMSEmodel <- NA    # model with minimum RMSE
+dataRMSE$minRMSE <- NA    # lowest RMSE
+dataRMSE$maxRMSE <- NA    # lowest RMSE
+dataRMSE$diffRMSE <- NA   # difference of min and max RMSE
+dataRMSE$avgRMSE <- NA    # average RMSE for models
+for (i in 1:nrow(dataRMSE))
+{
+   # drop species with no fits (too few obs or no convergence)
+   if (is.na(dataRMSE$RMSE_1[i])==TRUE & is.na(dataRMSE$RMSE_2[i])==TRUE &
+       is.na(dataRMSE$RMSE_3[i])==TRUE & is.na(dataRMSE$RMSE_4[i])==TRUE &
+       is.na(dataRMSE$RMSE_5[i])==TRUE & is.na(dataRMSE$RMSE_6[i])==TRUE) { next }
+   dataRMSE$minRMSEmodel[i] <- names(which.min(dataRMSE[i,c(2:7)]))
+   dataRMSE$minRMSE[i] <- dataRMSE[i,1+as.numeric((which.min(dataRMSE[i,c(2:7)])))]
+   dataRMSE$maxRMSE[i] <- dataRMSE[i,1+as.numeric((which.max(dataRMSE[i,c(2:7)])))]
+   dataRMSE$diffRMSE[i] <- max(dataRMSE[i,c(2:7)], na.rm=TRUE) - min(dataRMSE[i,c(2:7)], na.rm=TRUE)
+   dataRMSE$avgRMSE[i] <- mean(as.numeric(dataRMSE[i, c(2:7)]), na.rm=TRUE)
+}
+
+# get counts of minimum RMSE by model
+temp <- dataRMSE %>% count(minRMSEmodel, name = "minRMSEcount") 
+temp$model <- substr(temp$minRMSEmodel, 6, 6)
+out11 <- temp[,c("model","minRMSEcount")]
+# mean RMSE by models (note n is not the same)
+meanRMSE <- c(mean(dataRMSE$RMSE_1, na.rm=TRUE),
+              mean(dataRMSE$RMSE_2, na.rm=TRUE),
+              mean(dataRMSE$RMSE_3, na.rm=TRUE),
+              mean(dataRMSE$RMSE_4, na.rm=TRUE),
+              mean(dataRMSE$RMSE_5, na.rm=TRUE),
+              mean(dataRMSE$RMSE_6, na.rm=TRUE))
+
+# get nobs for weighting
+junkn <- subset(dataHDfits, model == 1, select=c("SPCD","nobs"))
+dataRMSE <- merge(dataRMSE, junkn, by=c("SPCD"), all=TRUE)
+meanRMSEw <- c(weighted.mean(dataRMSE$RMSE_1, dataRMSE$nobs, na.rm=TRUE),
+               weighted.mean(dataRMSE$RMSE_2, dataRMSE$nobs, na.rm=TRUE),
+               weighted.mean(dataRMSE$RMSE_3, dataRMSE$nobs, na.rm=TRUE),
+               weighted.mean(dataRMSE$RMSE_4, dataRMSE$nobs, na.rm=TRUE),
+               weighted.mean(dataRMSE$RMSE_5, dataRMSE$nobs, na.rm=TRUE),
+               weighted.mean(dataRMSE$RMSE_6, dataRMSE$nobs, na.rm=TRUE))
+
+out11 <- cbind(out11,meanRMSE)
+out11 <- cbind(out11,meanRMSEw)
+
+## summarize mean bias (pred - act)
+
+dataBIAS <- merge(junk1[,c("SPCD","meanBIAS_1")], junk2[,c("SPCD","meanBIAS_2")], by=c("SPCD"), all=TRUE)
+dataBIAS <- merge(dataBIAS, junk3[,c("SPCD","meanBIAS_3")], by=c("SPCD"), all=TRUE)
+dataBIAS <- merge(dataBIAS, junk4[,c("SPCD","meanBIAS_4")], by=c("SPCD"), all=TRUE)
+dataBIAS <- merge(dataBIAS, junk5[,c("SPCD","meanBIAS_5")], by=c("SPCD"), all=TRUE)
+dataBIAS <- merge(dataBIAS, junk6[,c("SPCD","meanBIAS_6")], by=c("SPCD"), all=TRUE)
+
+# need to fix this where minBIAS is nearest to 0
+
+dataBIAS$minBIASmodel <- NA    # model with minimum RMSE
+dataBIAS$minBIAS <- NA    # lowest RMSE
+dataBIAS$maxBIAS <- NA    # lowest RMSE
+dataBIAS$diffBIAS <- NA   # difference of min and max RMSE
+dataBIAS$avgBIAS <- NA    # average RMSE for models
+for (i in 1:nrow(dataBIAS))
+{
+   # drop species with no fits (too few obs or no convergence)
+   if (is.na(dataBIAS$meanBIAS_1[i])==TRUE & is.na(dataBIAS$meanBIAS_2[i])==TRUE &
+       is.na(dataBIAS$meanBIAS_3[i])==TRUE & is.na(dataBIAS$meanBIAS_4[i])==TRUE &
+       is.na(dataBIAS$meanBIAS_5[i])==TRUE & is.na(dataBIAS$meanBIAS_6[i])==TRUE) { next }
+   # minBIAS model is nearest to 0
+   dataBIAS$minBIASmodel[i] <- names(which.min(abs(dataBIAS[i,c(2:7)])))
+   dataBIAS$minBIAS[i] <- dataBIAS[i,1+as.numeric((which.min(dataBIAS[i,c(2:7)])))]
+   dataBIAS$maxBIAS[i] <- dataBIAS[i,1+as.numeric((which.max(dataBIAS[i,c(2:7)])))]
+   dataBIAS$diffBIAS[i] <- max(dataBIAS[i,c(2:7)], na.rm=TRUE) - min(dataBIAS[i,c(2:7)], na.rm=TRUE)
+   dataBIAS$avgBIAS[i] <- mean(as.numeric(dataBIAS[i, c(2:7)]), na.rm=TRUE)
+}
+
+# get counts of minimum BIAS by model
+temp <- dataBIAS %>% count(minBIASmodel, name = "minBIAScount") 
+temp$model <- substr(temp$minBIASmodel, 10, 10)
+out12 <- temp[,c("model","minBIAScount")]
+# mean BIAS by models pred-act (note n is not the same)
+meanBIAS <- c(mean(dataBIAS$meanBIAS_1, na.rm=TRUE),
+              mean(dataBIAS$meanBIAS_2, na.rm=TRUE),
+              mean(dataBIAS$meanBIAS_3, na.rm=TRUE),
+              mean(dataBIAS$meanBIAS_4, na.rm=TRUE),
+              mean(dataBIAS$meanBIAS_5, na.rm=TRUE),
+              mean(dataBIAS$meanBIAS_6, na.rm=TRUE))
+
+# get nobs for weighting
+junkn <- subset(dataHDfits, model == 1, select=c("SPCD","nobs"))
+dataBIAS <- merge(dataBIAS, junkn, by=c("SPCD"), all=TRUE)
+meanBIASw <- c(weighted.mean(dataBIAS$meanBIAS_1, dataBIAS$nobs, na.rm=TRUE),
+               weighted.mean(dataBIAS$meanBIAS_2, dataBIAS$nobs, na.rm=TRUE),
+               weighted.mean(dataBIAS$meanBIAS_3, dataBIAS$nobs, na.rm=TRUE),
+               weighted.mean(dataBIAS$meanBIAS_4, dataBIAS$nobs, na.rm=TRUE),
+               weighted.mean(dataBIAS$meanBIAS_5, dataBIAS$nobs, na.rm=TRUE),
+               weighted.mean(dataBIAS$meanBIAS_6, dataBIAS$nobs, na.rm=TRUE))
+
+out12 <- cbind(out12,meanBIAS)
+out12 <- cbind(out12,meanBIASw)
+
+outF <- merge(out11, out12, by=c("model"), all=TRUE)
+outF$meanRMSE <- round(outF$meanRMSE,2)
+outF$meanRMSEw <- round(outF$meanRMSEw,2)
+outF$meanBIAS <- round(outF$meanBIAS,4)
+outF$meanBIASw <- round(outF$meanBIASw,4)
+outF$model <- as.numeric(outF$model)
+
+pander(t(outF), style="simple", justify = c("left"), 
+       caption="Summary of fit statistics by model (1-6).")
+
+```
+
+The table below summarizes the mean (unweighted) bias for the lower, middle and upper third of the DBH distributio of each species fit. This may give some idea of how the models fit the small and larger trees.
+
+minLOWcount = the number of species fit with the lowest mean bias in the lower third of the diameter distribution by model
+meanBIASlow = the mean bias for the lower third of the diameter distributions
+minMIDcount = the number of species fit with the lowest mean bias in the middle third of the diameter distribution by model
+meanBIASmid = the mean bias for the middle third of the diameter distributions
+minUPPcount = the number of species fit with the lowest mean bias in the upper third of the diameter distribution by model
+meanBIASUPP = the mean bias for the upper third of the diameter distributions
+
+```{r fit_summaries_part3, eval=TRUE, echo=FALSE, dev='png'}
+
+# part 3 - summarize fit bias by DBH thirds
+
+junk1 <- subset(dataHDfits, model == 1 & ierr == 0, select=c("model","SPCD","meanLowDBHRes","meanMidDBHRes","meanUppDBHRes"))
+names(junk1) <- c("model","SPCD","meanLowDBHRes_1","meanMidDBHRes_1","meanUppDBHRes_1")
+junk2 <- subset(dataHDfits, model == 2 & ierr == 0, select=c("model","SPCD","meanLowDBHRes","meanMidDBHRes","meanUppDBHRes"))
+names(junk2) <- c("model","SPCD","meanLowDBHRes_2","meanMidDBHRes_2","meanUppDBHRes_2")
+junk3 <- subset(dataHDfits, model == 3 & ierr == 0, select=c("model","SPCD","meanLowDBHRes","meanMidDBHRes","meanUppDBHRes"))
+names(junk3) <- c("model","SPCD","meanLowDBHRes_3","meanMidDBHRes_3","meanUppDBHRes_3")
+junk4 <- subset(dataHDfits, model == 4 & ierr == 0, select=c("model","SPCD","meanLowDBHRes","meanMidDBHRes","meanUppDBHRes"))
+names(junk4) <- c("model","SPCD","meanLowDBHRes_4","meanMidDBHRes_4","meanUppDBHRes_4")
+junk5 <- subset(dataHDfits, model == 5 & ierr == 0, select=c("model","SPCD","meanLowDBHRes","meanMidDBHRes","meanUppDBHRes"))
+names(junk5) <- c("model","SPCD","meanLowDBHRes_5","meanMidDBHRes_5","meanUppDBHRes_5")
+junk6 <- subset(dataHDfits, model == 6 & ierr == 0, select=c("model","SPCD","meanLowDBHRes","meanMidDBHRes","meanUppDBHRes"))
+names(junk6) <- c("model","SPCD","meanLowDBHRes_6","meanMidDBHRes_6","meanUppDBHRes_6")
+
+dataGRPres <- merge(junk1[,c("SPCD","meanLowDBHRes_1","meanMidDBHRes_1","meanUppDBHRes_1")], 
+                    junk2[,c("SPCD","meanLowDBHRes_2","meanMidDBHRes_2","meanUppDBHRes_2")], by=c("SPCD"), all=TRUE)
+dataGRPres <- merge(dataGRPres, junk3[,c("SPCD","meanLowDBHRes_3","meanMidDBHRes_3","meanUppDBHRes_3")], by=c("SPCD"), all=TRUE)
+dataGRPres <- merge(dataGRPres, junk4[,c("SPCD","meanLowDBHRes_4","meanMidDBHRes_4","meanUppDBHRes_4")], by=c("SPCD"), all=TRUE)
+dataGRPres <- merge(dataGRPres, junk5[,c("SPCD","meanLowDBHRes_5","meanMidDBHRes_5","meanUppDBHRes_5")], by=c("SPCD"), all=TRUE)
+dataGRPres <- merge(dataGRPres, junk6[,c("SPCD","meanLowDBHRes_6","meanMidDBHRes_6","meanUppDBHRes_6")], by=c("SPCD"), all=TRUE)
+
+# find which models have lowest bias for each third
+dataGRPres$LOWmodel <- NA
+dataGRPres$MIDmodel <- NA
+dataGRPres$UPPmodel <- NA
+# lower third
+for (i in 1:nrow(dataGRPres))
+{
+   # drop species with no fits (too few obs or no convergence)
+   if (is.na(dataGRPres$meanLowDBHRes_1[i])==TRUE & is.na(dataGRPres$meanLowDBHRes_2[i])==TRUE &
+       is.na(dataGRPres$meanLowDBHRes_3[i])==TRUE & is.na(dataGRPres$meanLowDBHRes_4[i])==TRUE &
+       is.na(dataGRPres$meanLowDBHRes_5[i])==TRUE & is.na(dataGRPres$meanLowDBHRes_6[i])==TRUE) { next }
+   # minBIAS model is nearest to 0
+   dataGRPres$LOWmodel[i] <- names(which.min(abs(dataGRPres[i,c(2,5,8,11,14,17)])))
+}
+# middle third
+for (i in 1:nrow(dataGRPres))
+{
+   #print(i)
+   # drop species with no fits (too few obs or no convergence)
+   if (is.na(dataGRPres$meanMidDBHRes_1[i])==TRUE & is.na(dataGRPres$meanMidDBHRes_2[i])==TRUE &
+       is.na(dataGRPres$meanMidDBHRes_3[i])==TRUE & is.na(dataGRPres$meanMidDBHRes_4[i])==TRUE &
+       is.na(dataGRPres$meanMidDBHRes_5[i])==TRUE & is.na(dataGRPres$meanMidDBHRes_6[i])==TRUE) { next }
+   # minBIAS model is nearest to 0
+   dataGRPres$MIDmodel[i] <- names(which.min(abs(dataGRPres[i,c(3,6,9,12,15,18)])))
+   #print(dataGRPres$MIDmodel[i])
+}
+# upper third
+for (i in 1:nrow(dataGRPres))
+{
+   # drop species with no fits (too few obs or no convergence)
+   if (is.na(dataGRPres$meanUppDBHRes_1[i])==TRUE & is.na(dataGRPres$meanUppDBHRes_2[i])==TRUE &
+       is.na(dataGRPres$meanUppDBHRes_3[i])==TRUE & is.na(dataGRPres$meanUppDBHRes_4[i])==TRUE &
+       is.na(dataGRPres$meanUppDBHRes_5[i])==TRUE & is.na(dataGRPres$meanUppDBHRes_6[i])==TRUE) { next }
+   # minBIAS model is nearest to 0
+   dataGRPres$UPPmodel[i] <- names(which.min(abs(dataGRPres[i,c(4,7,10,13,16,19)])))
+}
+
+# lower third minimum bias counts
+tempL <- dataGRPres %>% count(LOWmodel, name = "minLOWcount") 
+tempL$model <- substr(tempL$LOWmodel, 15, 15)
+countLOW <- tempL[,c("model","minLOWcount")]
+# lower third minimum bias means
+meanLOW_1 <- round(mean(dataGRPres$meanLowDBHRes_1, na.rm=TRUE),3)
+meanLOW_2 <- round(mean(dataGRPres$meanLowDBHRes_2, na.rm=TRUE),3)
+meanLOW_3 <- round(mean(dataGRPres$meanLowDBHRes_3, na.rm=TRUE),3)
+meanLOW_4 <- round(mean(dataGRPres$meanLowDBHRes_4, na.rm=TRUE),3)
+meanLOW_5 <- round(mean(dataGRPres$meanLowDBHRes_5, na.rm=TRUE),3)
+meanLOW_6 <- round(mean(dataGRPres$meanLowDBHRes_6, na.rm=TRUE),3)
+meanBIASlow <- data.frame(model=c(1,2,3,4,5,6), meanBIASlow=c(meanLOW_1, meanLOW_2, meanLOW_3, meanLOW_4, meanLOW_5, meanLOW_6))
+
+# middle third minimum bias counts
+tempM <- dataGRPres %>% count(MIDmodel, name = "minMIDcount")     # <--- NAs
+tempM$model <- substr(tempM$MIDmodel, 15, 15)
+countMID <- tempM[,c("model","minMIDcount")]
+# middle third minimum bias means
+meanMID_1 <- round(mean(dataGRPres$meanMidDBHRes_1, na.rm=TRUE),3)
+meanMID_2 <- round(mean(dataGRPres$meanMidDBHRes_2, na.rm=TRUE),3)
+meanMID_3 <- round(mean(dataGRPres$meanMidDBHRes_3, na.rm=TRUE),3)
+meanMID_4 <- round(mean(dataGRPres$meanMidDBHRes_4, na.rm=TRUE),3)
+meanMID_5 <- round(mean(dataGRPres$meanMidDBHRes_5, na.rm=TRUE),3)
+meanMID_6 <- round(mean(dataGRPres$meanMidDBHRes_6, na.rm=TRUE),3)
+meanBIASmid <- data.frame(model=c(1,2,3,4,5,6), meanBIASmid=c(meanMID_1, meanMID_2, meanMID_3, meanMID_4, meanMID_5, meanMID_6))
+
+# upper third minimum bias counts
+tempU <- dataGRPres %>% count(UPPmodel, name = "minUPPcount") 
+tempU$model <- substr(tempU$UPPmodel, 15, 15)
+countUPP <- tempU[,c("model","minUPPcount")]
+# upper third minimum bias means
+meanUPP_1 <- round(mean(dataGRPres$meanUppDBHRes_1, na.rm=TRUE),3)
+meanUPP_2 <- round(mean(dataGRPres$meanUppDBHRes_2, na.rm=TRUE),3)
+meanUPP_3 <- round(mean(dataGRPres$meanUppDBHRes_3, na.rm=TRUE),3)
+meanUPP_4 <- round(mean(dataGRPres$meanUppDBHRes_4, na.rm=TRUE),3)
+meanUPP_5 <- round(mean(dataGRPres$meanUppDBHRes_5, na.rm=TRUE),3)
+meanUPP_6 <- round(mean(dataGRPres$meanUppDBHRes_6, na.rm=TRUE),3)
+meanBIASupp <- data.frame(model=c(1,2,3,4,5,6), meanBIASUPP=c(meanUPP_1, meanUPP_2, meanUPP_3, meanUPP_4, meanUPP_5, meanUPP_6))
+
+outDR <- merge(countLOW, meanBIASlow, by=c("model"), all.x=TRUE)
+outDR <- merge(outDR, countMID, by=c("model"), all.x=TRUE)
+outDR <- merge(outDR, meanBIASmid, by=c("model"), all.x=TRUE)
+outDR <- merge(outDR, countUPP, by=c("model"), all.x=TRUE)
+outDR <- merge(outDR, meanBIASupp, by=c("model"), all.x=TRUE)
+
+pander(t(outDR), style="simple", justify = c("left"), 
+       caption="Summary of number of lowest bias models and the mean bias in the lower, middle and upper thirds of the DBH distributions by model (1-6).")
+
+```
+
+
+Below are histogram plots of the coefficients for all "successful" (convergence) fits each model.
+
+```{r plots_coef_hist, eval=TRUE, echo=FALSE, fig.height=4, dev='png'}
+
+### histogram of coefficients
+
+par(mfrow=c(1,3))
+junk <- subset(dataHDfits, model == 1 & ierr == 0)
+hist(junk$B1, xlab="B1", ylab="Count", main="Model 1: B1")
+hist(junk$B2, xlab="B2", ylab="Count", main="Model 1: B2")
+par(mfrow=c(1,1))
+
+par(mfrow=c(1,3))
+junk <- subset(dataHDfits, model == 2 & ierr == 0)
+hist(junk$B1, xlab="B1", ylab="Count", main="Model 2: B1")
+hist(junk$B2, xlab="B2", ylab="Count", main="Model 2: B2")
+hist(junk$B3, xlab="B3", ylab="Count", main="Model 2: B3")
+par(mfrow=c(1,1))
+
+par(mfrow=c(1,3))
+junk <- subset(dataHDfits, model == 3 & ierr == 0)
+hist(junk$B1, xlab="B1", ylab="Count", main="Model 3: B1")
+hist(junk$B2, xlab="B2", ylab="Count", main="Model 3: B2")
+hist(junk$B3, xlab="B3", ylab="Count", main="Model 3: B3")
+par(mfrow=c(1,1))
+
+par(mfrow=c(1,3))
+junk <- subset(dataHDfits, model == 4 & ierr == 0)
+hist(junk$B1, xlab="B1", ylab="Count", main="Model 4: B1")
+hist(junk$B2, xlab="B2", ylab="Count", main="Model 4: B2")
+par(mfrow=c(1,1))
+
+par(mfrow=c(1,3))
+junk <- subset(dataHDfits, model == 5 & ierr == 0)
+hist(junk$B1, xlab="B1", ylab="Count", main="Model 5: B1")
+hist(junk$B2, xlab="B2", ylab="Count", main="Model 5: B2")
+hist(junk$B3, xlab="B3", ylab="Count", main="Model 5: B3")
+par(mfrow=c(1,1))
+
+par(mfrow=c(1,3))
+junk <- subset(dataHDfits, model == 3 & ierr == 0)
+hist(junk$B1, xlab="B1", ylab="Count", main="Model 6: B1")
+hist(junk$B2, xlab="B2", ylab="Count", main="Model 6: B2")
+hist(junk$B3, xlab="B3", ylab="Count", main="Model 6: B3")
+par(mfrow=c(1,1))
+
+```
+
+Below are bivariate plots of the coefficients for all "successful" (convergence) fits each model.
+
+```{r plots_coef, eval=TRUE, echo=FALSE, fig.height=4, dev='png'}
+
+### plot coefficient 
+
+par(mfrow=c(1,3))
+junk <- subset(dataHDfits, model == 1 & ierr == 0)
+plot(junk$B1, junk$B2, xlab="B1", ylab="B2", main="Model 1")
+#plot(junk$B1, junk$B3)
+#plot(junk$B2, junk$B3)
+par(mfrow=c(1,1))
+
+par(mfrow=c(1,3))
+junk <- subset(dataHDfits, model == 2 & ierr == 0)
+plot(junk$B1, junk$B2, xlab="B1", ylab="B2", main="Model 2")
+plot(junk$B1, junk$B3, xlab="B1", ylab="B3", main="Model 2")
+plot(junk$B2, junk$B3, xlab="B2", ylab="B3", main="Model 2")
+par(mfrow=c(1,1))
+
+par(mfrow=c(1,3))
+junk <- subset(dataHDfits, model == 3 & ierr == 0)
+plot(junk$B1, junk$B2, xlab="B1", ylab="B2", main="Model 3")
+plot(junk$B1, junk$B3, xlab="B1", ylab="B3", main="Model 3")
+plot(junk$B2, junk$B3, xlab="B2", ylab="B3", main="Model 3")
+par(mfrow=c(1,1))
+
+par(mfrow=c(1,3))
+junk <- subset(dataHDfits, model == 4 & ierr == 0)
+plot(junk$B1, junk$B2, xlab="B1", ylab="B2", main="Model 4")
+#plot(junk$B1, junk$B3)
+#plot(junk$B2, junk$B3)
+par(mfrow=c(1,1))
+
+par(mfrow=c(1,3))
+junk <- subset(dataHDfits, model == 5 & ierr == 0)
+plot(junk$B1, junk$B2, xlab="B1", ylab="B2", main="Model 5")
+plot(junk$B1, junk$B3, xlab="B1", ylab="B3", main="Model 5")
+plot(junk$B2, junk$B3, xlab="B2", ylab="B3", main="Model 5")
+par(mfrow=c(1,1))
+
+par(mfrow=c(1,3))
+junk <- subset(dataHDfits, model == 6 & ierr == 0)
+plot(junk$B1, junk$B2, xlab="B1", ylab="B2", main="Model 6")
+plot(junk$B1, junk$B3, xlab="B1", ylab="B3", main="Model 6")
+plot(junk$B2, junk$B3, xlab="B2", ylab="B3", main="Model 6")
+par(mfrow=c(1,1))
+
+```
+
+Finally, the graphs below are the predictions for all "successful" (convergence) fits each model. The red colored lines indicate fits that converged but at least one of the parameters might be insignificant (not different from 0).
+
+All of the fits that had a predicted height of 160 or 170 feet at a DBH of 50 inches was plotted against the raw data. In all cases the curves appeared to fit the range of the data. In some cases the data set for a species was small and/or nearly linear. In some cases the range of the DBH as limited and did not include larger (e.g. greater than 18-inch) trees and did not exhibit an asymptotic behavior.
+
+```{r plots_predictions, eval=TRUE, echo=FALSE, fig.height=9, dev='png'}
+
+x <- seq(0,50,1)
+
+par(mfrow=c(3,2))
+
+# model 1: HT = bh + exp(B1 + B2*DBH^(-1.0))
+temp <- subset(dataHDfits, model == 1 & is.na(B1) == FALSE)
+plot(x=c(0,50), y=c(0,250), type="n", xlab="DBH (inches)", ylab="Height (feet)",
+       main="Model 1 predictions")
+for (i in 1:nrow(temp))
+{
+   if (is.na(temp$B1[i]) == TRUE) { next }
+   B1 <- temp$B1[i] 
+   B2 <- temp$B2[i]
+   #B3 <- temp$B3[i]
+   B3 <- -1.0
+   y <- 4.5 + exp(B1 + B2*x^B3)
+   lines(x, y, col=ifelse(temp$ierr[i] == 0, 1, 2))
+   #if (any(x >= 50 & y > 160)) { cat("Problem: ", i, "\n") }
+}
+
+# temp[259,]
+#    model                     model.formula  bh    WT SPCD nobs       B1
+#260     1 HT = bh + exp(B1 + B2*DBH^(-1.0)) 4.5 1/DBH  212   48 5.660705
+#           B2 B3       seB1     seB2 seB3          pB1          pB2 pB3
+#260 -21.44181 NA 0.05097648 1.507085   NA 1.521182e-57 1.840282e-18  NA
+#        RMSE      AIC  meanBIAS meanAbsBIAS B3_test ierr notes
+#260 4.688889 440.6973 -3.419273    17.47901      NA    0   fit
+
+# model 2: HT = bh + exp(B1 + B2*DBH^B3)
+temp <- subset(dataHDfits, model == 2 & is.na(B1) == FALSE)
+plot(x=c(0,50), y=c(0,250), type="n", xlab="DBH (inches)", ylab="Height (feet)",
+       main="Model 2 predictions")
+for (i in 1:nrow(temp))
+{
+   #print(i)
+   if (is.na(temp$B1[i]) == TRUE) { next }
+   B1 <- temp$B1[i] 
+   B2 <- temp$B2[i]
+   B3 <- temp$B3[i]
+   y <- 4.5 + exp(B1 + B2*x^B3)
+   lines(x, y, col=ifelse(temp$ierr[i] == 0, 1, 2))
+}
+
+# model 3: HT = bh + B1*(1.0-exp(B2*DBH))^B3
+temp <- subset(dataHDfits, model == 3)
+plot(x=c(0,50), y=c(0,250), type="n", xlab="DBH (inches)", ylab="Height (feet)",
+       main="Model 3 predictions")
+for (i in 1:nrow(temp))
+{
+   if (is.na(temp$B1[i]) == TRUE) { next }
+   B1 <- temp$B1[i] 
+   B2 <- temp$B2[i]
+   B3 <- temp$B3[i]
+   y <- 4.5 + B1*(1.0-exp(B2*x))^B3
+   lines(x, y, col=ifelse(temp$ierr[i] == 0, 1, 2))
+   #if (any(x >= 50 & y > 160)) { cat("Problem: ", i, "\n") }
+}
+#temp[214,]
+#     model                     model.formula  bh   WT SPCD nobs       B1
+#1090     3 HT = bh + B1*(1.0-exp(B2*DBH))^B3 4.5 <NA>  211 9478 223.3278
+#              B2        B3    seB1        seB2        seB3 pB1           pB2
+#1090 -0.02415897 0.9669631 4.81146 0.001003961 0.009835856   0 3.049023e-124
+#     pB3     RMSE      AIC    meanBIAS meanAbsBIAS B3_test ierr notes
+#1090   0 4.003161 78912.32 -0.03108796    13.73184      NA    0   fit
+#temp[216,]
+#     model                     model.formula  bh   WT SPCD  nobs       B1
+#1092     3 HT = bh + B1*(1.0-exp(B2*DBH))^B3 4.5 <NA>  263 81261 171.1069
+#              B2       B3      seB1         seB2        seB3 pB1 pB2 pB3
+#1092 -0.05484198 1.200176 0.8219492 0.0005433294 0.004881571   0   0   0
+#         RMSE      AIC    meanBIAS meanAbsBIAS B3_test ierr notes
+#1092 4.395243 650033.7 -0.01643458    11.18772      NA    0   fit
+#temp[217,]
+#     model                     model.formula  bh   WT SPCD nobs       B1
+#1093     3 HT = bh + B1*(1.0-exp(B2*DBH))^B3 4.5 <NA>   98 3146 220.4469
+#              B2       B3     seB1        seB2      seB3           pB1
+#1093 -0.02820835 1.008342 8.418428 0.002284547 0.0250506 6.826529e-137
+#             pB2           pB3     RMSE      AIC    meanBIAS meanAbsBIAS
+#1093 3.08687e-34 4.366256e-286 5.034898 27752.96 -0.01739793    17.23965
+#     B3_test ierr notes
+#1093      NA    0   fit
+#temp[232,]
+#     model                     model.formula  bh   WT SPCD nobs       B1
+#1108     3 HT = bh + B1*(1.0-exp(B2*DBH))^B3 4.5 <NA>   22 6002 175.9518
+#              B2       B3    seB1        seB2       seB3 pB1           pB2 pB3
+#1108 -0.05108873 1.363574 2.71678 0.001651601 0.02027247   0 4.602538e-195   0
+#         RMSE      AIC    meanBIAS meanAbsBIAS B3_test ierr notes
+#1108 3.655722 46923.98 -0.03327762    10.42963      NA    0   fit
+#temp[260,]
+#     model                     model.formula  bh   WT SPCD nobs       B1
+#1136     3 HT = bh + B1*(1.0-exp(B2*DBH))^B3 4.5 <NA>  212   48 386.0591
+#              B2       B3     seB1        seB2      seB3         pB1        pB2
+#1136 -0.01518699 1.200326 112.9414 0.007427882 0.1435811 0.001348465 0.04677135
+#              pB3     RMSE      AIC    meanBIAS meanAbsBIAS B3_test ierr notes
+#1136 1.037943e-10 3.478052 412.9648 0.003406134    13.44851      NA    0   fit
+
+# model 4: HT = bh + exp(B1+B2/(DBH+1.0))
+temp <- subset(dataHDfits, model == 4 & is.na(B1) == FALSE)
+plot(x=c(0,50), y=c(0,250), type="n", xlab="DBH (inches)", ylab="Height (feet)",
+       main="Model 4 predictions")
+for (i in 1:nrow(temp))
+{
+   if (is.na(temp$B1[i]) == TRUE) { next }
+   B1 <- temp$B1[i] 
+   B2 <- temp$B2[i]
+   #B3 <- temp$B3[i]
+   B3 <- 1.0
+   y <- 4.5 + exp(B1 + B2/(x+B3))
+   lines(x, y, col=ifelse(temp$ierr[i] == 0, 1, 2))
+   #if (any(x >= 50 & y > 160)) { cat("Problem: ", i, "\n") }
+}
+#temp[259,]
+#     model                  model.formula  bh   WT SPCD nobs       B1        B2
+#1574     4 HT = bh + exp(B1+B2/(DBH+1.0)) 4.5 <NA>  212   48 5.696383 -23.71334
+#     B3       seB1    seB2 seB3          pB1          pB2 pB3     RMSE     AIC
+#1574 NA 0.04960474 1.53779   NA 3.266464e-58 8.499826e-20  NA 4.471177 436.133
+#      meanBIAS meanAbsBIAS B3_test ierr notes
+#1574 -2.832084    16.57207      NA    0   fit
+#temp[327,]  # only  5 observations and basically linear                        # <---
+#     model                  model.formula  bh   WT SPCD nobs       B1        B2
+#1647     4 HT = bh + exp(B1+B2/(DBH+1.0)) 4.5 <NA> 8901    5 5.747548 -8.032588
+#     B3     seB1     seB2 seB3        pB1        pB2 pB3     RMSE      AIC
+#1647 NA 1.228303 2.696508   NA 0.01844058 0.05864932  NA 1.294388 20.92506
+#         meanBIAS meanAbsBIAS B3_test ierr notes
+#1647 -0.001871399   0.8508261      NA    4   fit
+
+# model 5: HT = bh + exp(B1+B2/(DBH+B3))
+temp <- subset(dataHDfits, model == 5 & is.na(B1) == FALSE)
+plot(x=c(0,50), y=c(0,250), type="n", xlab="DBH (inches)", ylab="Height (feet)",
+       main="Model 5 predictions")
+for (i in 1:nrow(temp))
+{
+   if (is.na(temp$B1[i]) == TRUE) { next }
+   B1 <- temp$B1[i] 
+   B2 <- temp$B2[i]
+   B3 <- temp$B3[i]
+   y <- 4.5 + exp(B1 + B2/(x+B3))
+   lines(x, y, col=ifelse(temp$ierr[i] == 0, 1, 2))
+   #if (any(x >= 50 & y > 170)) { cat("Problem: ", i, "\n") }
+   #if (any(x == 1 & y > 40)) { cat("Problem: ", i, "\n") }
+}
+
+#temp[126,]      # no values above 22 inches so curves upwards 
+#     model                 model.formula  bh   WT SPCD nobs      B1        B2
+#1879     5 HT = bh + exp(B1+B2/(DBH+B3)) 4.5 <NA>  460   27 7.33614 -156.0034
+#           B3     seB1    seB2     seB3       pB1       pB2       pB3     RMSE
+#1879 36.46339 5.533898 494.018 69.78472 0.1974288 0.7548956 0.6061037 7.601002
+#          AIC  meanBIAS meanAbsBIAS   B3_test ierr notes
+#1879 240.5692 0.1629311    9.190617 0.6159645    4   fit
+#temp[135,]     # no values above 22 inches so curves upwards 
+#     model                 model.formula  bh   WT SPCD nobs       B1       B2
+#1891     5 HT = bh + exp(B1+B2/(DBH+B3)) 4.5 <NA>  800  136 9.197784 -344.981
+#           B3     seB1     seB2     seB3       pB1       pB2       pB3     RMSE
+#1891 46.49677 5.649975 621.4877 49.09004 0.1059056 0.5797661 0.3452683 3.357051
+#          AIC   meanBIAS meanAbsBIAS   B3_test ierr notes
+#1891 875.5911 0.02288858    4.621838 0.3557079    4   fit
+#temp[240,]    # no values above 18 inches so curves upwards 
+#     model                 model.formula  bh   WT SPCD nobs       B1       B2
+#2001     5 HT = bh + exp(B1+B2/(DBH+B3)) 4.5 <NA>   55  116 8.449895 -261.3651
+#          B3     seB1     seB2     seB3        pB1       pB2     pB3     RMSE
+#2001 39.0108 4.075885 371.0376 32.11261 0.04043258 0.4826225 0.22697 2.190576
+#          AIC    meanBIAS meanAbsBIAS  B3_test ierr notes
+#2001 680.9637 -0.04069661    3.561783 0.239027    4   fit
+#temp[251,] 
+#     model                 model.formula  bh   WT SPCD nobs     B1        B2
+#2012     5 HT = bh + exp(B1+B2/(DBH+B3)) 4.5 <NA>  212   48 6.1677 -60.49752
+#           B3      seB1     seB2     seB3          pB1          pB2
+#2012 13.17488 0.1340289 11.80057 3.247697 1.727767e-39 6.026844e-06
+#              pB3     RMSE      AIC   meanBIAS meanAbsBIAS      B3_test ierr
+#2012 0.0001954606 3.467771 412.6806 -0.0560971    13.24192 0.0005047737    0
+#temp[261,]    # no values above 15 inches so curves upwards                         # < ---
+#     model                 model.formula  bh   WT SPCD nobs      B1        B2
+#2023     5 HT = bh + exp(B1+B2/(DBH+B3)) 4.5 <NA>  997   34 7.70983 -198.7211
+#           B3     seB1     seB2     seB3       pB1       pB2       pB3     RMSE
+#2023 36.60801 4.820231 415.5078 44.92168 0.1198593 0.6358203 0.4213295 2.053515
+#          AIC    meanBIAS meanAbsBIAS   B3_test ierr notes
+#2023 202.2008 -0.01492701    3.421401 0.4339957    4   fit
+#temp[256,]    # has a very high intercept (40 feet at 1 inch)                          # <---
+#     model                 model.formula  bh   WT SPCD nobs       B1        B2
+#2018     5 HT = bh + exp(B1+B2/(DBH+B3)) 4.5 <NA>  511    9 5.673707 -44.65229
+#           B3     seB1     seB2     seB3         pB1      pB2       pB3
+#2018 22.38453 1.128609 89.38996 37.11823 0.002387008 0.635197 0.5685478
+#         RMSE      AIC    meanBIAS meanAbsBIAS   B3_test ierr notes
+#2018 2.881931 73.91545 0.009860314    8.209127 0.5854804    4   fit
+
+# model 6: HT = bh + B1*(1.0-exp(B2*DBH^B3))
+temp <- subset(dataHDfits, model == 6 & is.na(B1) == FALSE)
+plot(x=c(0,50), y=c(0,250), type="n", xlab="DBH (inches)", ylab="Height (feet)",
+       main="Model 6 predictions")
+for (i in 1:nrow(temp))
+{
+   if (is.na(temp$B1[i]) == TRUE) { next }
+   B1 <- temp$B1[i] 
+   B2 <- temp$B2[i]
+   B3 <- temp$B3[i]
+   y <- 4.5 + B1*(1.0-exp(B2*x^B3))
+   lines(x, y, col=ifelse(temp$ierr[i] == 0, 1, 2))
+   #if (any(x >= 50 & y > 170)) { cat("Problem: ", i, "\n") }
+   #if (any(x == 8 & y > 70)) { cat("Problem: ", i, "\n") }
+}
+#temp[113,] 
+#     model                     model.formula  bh   WT SPCD   nobs       B1
+#2352     6 HT = bh + B1*(1.0-exp(B2*DBH^B3)) 4.5 <NA>  202 434130 255.3557
+#              B2        B3     seB1         seB2        seB3 pB1 pB2 pB3
+#2352 -0.02443909 0.9822992 1.612937 0.0001076462 0.001687112   0   0   0
+#         RMSE     AIC     meanBIAS meanAbsBIAS B3_test ierr notes
+#2352 4.788647 3625964 -0.005530593    13.87465      NA    0   fit
+#temp[154,] 
+#     model                     model.formula  bh   WT SPCD nobs       B1
+#2407     6 HT = bh + B1*(1.0-exp(B2*DBH^B3)) 4.5 <NA>   98 3146 220.9705
+#              B2     B3     seB1         seB2       seB3           pB1
+#2407 -0.02748166 1.0043 9.775544 0.0008396557 0.01998279 5.929824e-105
+#               pB2 pB3     RMSE      AIC    meanBIAS meanAbsBIAS B3_test ierr
+#2407 1.913826e-202   0 5.034948 27753.03 -0.01611922    17.23962      NA    0
+#temp[189,] 
+#     model                     model.formula  bh   WT SPCD   nobs       B1
+#2450     6 HT = bh + B1*(1.0-exp(B2*DBH^B3)) 4.5 <NA>  212   48 351.8923
+#               B2       B3     seB1        seB2      seB3         pB1
+#2450 -0.007381827 1.172584 100.4384 0.001377891 0.1064073 0.001050405
+#              pB2          pB3     RMSE      AIC      meanBIAS meanAbsBIAS
+#2450 2.775562e-06 2.276493e-14 3.474066 412.8548 -0.0002182522    13.41458
+#     B3_test ierr notes
+#2450      NA    0   fit
+#temp[190,] 
+#     model                     model.formula  bh   WT SPCD nobs       B1
+#2451     6 HT = bh + B1*(1.0-exp(B2*DBH^B3)) 4.5 <NA>  137   63 104.6521
+#             B2       B3     seB1        seB2      seB3         pB1         pB2
+#2451 -0.0259889 1.187584 20.44702 0.003154288 0.1055128 3.42596e-06 1.91668e-11
+#              pB3    RMSE      AIC     meanBIAS meanAbsBIAS B3_test ierr notes
+#2451 2.010867e-16 1.65639 381.8363 0.0001943266    3.878685      NA    0   fit
+#temp[226,]   # goes flat at about 6-inches (6 obs that are flat after about 6-inches)  <---
+#     model                     model.formula  bh   WT SPCD nobs       B1
+#2524     6 HT = bh + B1*(1.0-exp(B2*DBH^B3)) 4.5 <NA>  857    6 73.73493
+#              B2       B3     seB1      seB2     seB3         pB1       pB2
+#2524 -0.02235353 2.697329 9.164084 0.0295404 1.205793 0.004009408 0.5042263
+#           pB3     RMSE      AIC  meanBIAS meanAbsBIAS B3_test ierr notes
+#2524 0.1112734 4.589604 50.93062 0.9903134    6.637872      NA    4   fit
+
+par(mfrow=c(1,1))
+
+#   species <- 460
+#   tempHD <- subset(dataHD, SPCD == species)
+
+#   plot(tempHD$DIA, tempHD$HT, pch=c(19), xlim=c(0,50), ylim=c(0,250),
+#            xlab="DBH (inches)", ylab="Total Height (feet)",
+#            main=paste0("Oregon FIA HT-DBH data for ", species))
+
+#   B1 <- 7.33614
+#   B2 <- -156.0034
+#   B3 <- 36.46339
+#   x <- seq(0,50,1)
+#   #y <- 4.5 + exp(B1 + B2*x^B3)       # model 1 and 2
+#   #y <- 4.5 + B1*(1.0-exp(B2*x))^B3   # model 3
+#   y <- 4.5 + exp(B1 + B2/(x+B3))     # model 4 and 5
+#   #y <- 4.5 + B1*(1.0-exp(B2*x^B3))    # model 6
+#   lines(x, y, col=2)
+
+# model 4 can be almost linear if no data indicating a leveling off (sigmoidal)
+# model 5 can slope upwards if no data indicating a leveling off (sigmoidal)
+
+```
+
+
+# 4.0 Discussion and Next Steps
+
+The results here are preliminary but are a start at building library of HT-DBH curves for all FIA species.
+
+These fits were done with nonlinear least squares, however, give that plots have remeasurements (within plot correlation structure) one might question of a mixed models (MM) with random effects for plots should have been used. This approach would account for the plot and remeasurement correlation. However, it would not solve the issue of a regionally fit curve being biased for individual stands (plots) without some type of calibration. This can be done but requires measured trees from the stand (plot) if interest and the calculations are not straight forward and requires using the variance/covariance structure to recover estimate of the random effects. The models above can be calibrated using measured trees in a bit more straight (ordinary least square type approach) forward manner as (Temsegen and others 2008): 
+
+$$
+K = sum((pHT-4.5)*(HT-4.5)) / sum((pHT-4.5)^2)
+$$
+where K is the height calibration, pHT is the predicted height, and HT is a measured height. The calibration is applied as
+$$
+adjHT = 4.5 + K*(pHT-4.5)
+$$
+Temesgen and others (2008) compared calibrations using OLS and MM approaches and (my opinion) showed little differences (maybe a few less trees need for the MM approach), but both required tree measurements and the MM approach was less straight forward to implement. 
+
+The big questions are (a) which model to use and (b) which fits to not use?
+
+For the first the as we might expect from the results of other model comparisons the differences are not great (models tend to go through the middle of the data). The Weibull model (6) is probably at the bottom. Models 1 and 5 get the most "good" fits and are the most linear like. Many of the fits for models 2 and 5 have B3 estimates that are not different from -1 and 1 (respectively), which may or may not matter.
+
+Models 2, 3 and 5 tended top have the most species with the lowest RMSE and the lowest average RMSE and model 5 had the lowest mean bias across the DBH classes. However, model 5 had some species with strange fits (high values for small diameters and non-asymptotic behavior) which I am not sure why. Model 2 was also good but over-predicted the small trees but was very good at the middle and larger trees in the DBH distribution.
+
+Considering which fits not to use, migtht have more to do with the data than the models. The graph below shows the minimum DBH and HT (red) and the maximum DBH and HT (black) for each species. Note that some of these species have very small maximum DBHs. Is thisa characteristic of the species or the sample?
+
+These graphs also show that there is a need for some data filtering for extreme and unreasonable values (see below).
+
+```{r raw_data_plots, eval=TRUE, echo=FALSE, dev='png'}
+
+file.name <- "C:/Users/DavidFolder/Projects/FIA_Data/ModelingProject/HT_DBH_Modeling/CONUS_HDfit_Data.CSV"
+outHD <- read.csv(file.name, header=TRUE, sep=",")
+
+summary(outHD$maxDBH)
+summary(outHD$maxHT)
+
+outHD <- read.csv(file.name, header=TRUE, sep=",")
+plot(outHD$maxDBH, outHD$maxHT, pch=c(19), col="black", xlim=c(0,200), ylim=c(0,1000),
+          xlab="DBH (inches)", ylab="Total Height (feet)")
+points(outHD$minDBH, outHD$minHT, pch=c(19), col="red")
+
+```
+
+Some things still to do ...
+
+1. There appear to be more "outlier" heights and diameter than I was expecting. I don't know how much difference these make, but some could be influential (model 5 shapes?) and probably need to be addressed. With 438 species this could take a while unless some rules could be used (e.g. HT/DBH ratio limits). 
+
+2. I have used "nls" in R but should try "nlsLM". This should not change the overall results here but "nlsLM" tends to be a bit more robust and might (maybe) converge on a few more species. This is a fairly quick check to do.
+
+3. Will need to develop species mapping. I started looking at the species group values (SPGRPCD) to see if this could help with this. There are 48 groups (after dropping the islands) for East, West, hardwoods and softwoods.
+
+# 5.0 References
+
+Curtis, R.O. 1967. Height-diameter and height-diameter-age equations for second-growth Douglas-fir. Forest Science 14(4):365-375.
+
+Huang, S.; Titus, S. 1992. Comparison of nonlinear height-diameter functions for major Alberta tree species. Canadian Journal of Forest Research 22:1297-1304.
+
+Martin, F.C.; Flewelling, J.W. 1998. Evaluation of tree height prediction models for stand inventory. Western Journal of Applied Forestry 13(4): 109-119.
+
+Schumacher, F. X. (1939). A New Growth Curve and Its Applications to Timber Yield Studies. Journal of Forestry, 37, 819-820. [Referenced by others]
+
+Temesgen, H.; Hann, D.W.; Monleon, V.J. 2007. Regional  height-diameter equations for major tree species of Southwest Oregon. Western Journal of Applied Forestry 22(3): 213-219.
+
+Temesgen, H.; Monleon, V.J.; Hann, D.W. 2008. Analysis and comparison of nonlinear tree height prediction strategies for Douglas-fir forest. Canadian Journal of Forest Research 38(3): 553-565.
+
+Wykoff, William R. 1986. Supplement to the user's guide for the stand prognosis model-version 5.0. Gen. Tech. Report INT-208. Ogden, UT: U.S. Department of Agriculture, Intermountain Forest and Range Experiment Station. 36 p.
+
+Wykoff, William R.; Crookston, Nicholas L.; Stage, Albert R. 1982. User's Guide to the stand prognosis model. Gen. Tech. Report INT-133. Ogden, UT: U.S. Department of Agriculture, Intermountain Forest and Range Experiment Station. 112 p
+
+Zhang, L. 1997. Cross-validation of non-linear growth functions for modeling tree height-diameter relationships. Annals of Botany 79:251-257.
+
+```{r fit_plots, eval=FALSE, echo=FALSE, dev='png'}
+
+plot(x=c(0,50), y=c(0,250), type="n", xlab="DBH (inches)", ylab="Height (feet)")
+for (i in 1:nrow(outHDfits))
+{
+   x <- seq(0,50,1)
+   if (is.na(dataHDfits$B1) == TRUE) { next }
+   B1 <- outHDfits$B1[i] 
+   B2 <- outHDfits$B2[i]
+   B3 <- outHDfits$B3[i]
+   y <- 4.5 + exp(B1 + B2*x^B3)
+   lines(x,y)
+}
+
+
+```

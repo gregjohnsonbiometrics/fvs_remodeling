@@ -1,0 +1,67 @@
+CONUS Modeling project Regional HT-DBH Curves Working Archive
+
+As Of Date: 7/3/2026
+
+Data set for species summaries
+
+CONUS_HDFit_Data.CSV
+
+SPCD = FIA species code
+nobs = number of observations
+minDBH = species minimum DBH (inches)
+maxDBH = species maximum (inches)
+minHT = species minimum HT (feet)
+maxHT = species maximum HT (feet)
+
+Data sets for model fits by species summaries
+
+CONUS_HDFit_Model_1.CSV
+CONUS_HDFit_Model_2.CSV
+CONUS_HDFit_Model_3.CSV
+CONUS_HDFit_Model_4.CSV
+CONUS_HDFit_Model_5.CSV
+CONUS_HDFit_Model_6.CSV
+
+#    model 1: HT = bh + exp(B1 + B2*DBH^(-1.0))
+#    model 2: HT = bh + exp(B1 + B2*DBH^B3)
+#    model 3: HT = bh + B1*(1.0-exp(B2*DBH))^B3    # Chapman-Richards
+#    model 4: HT = bh + exp(B1+B2/(DBH+1.0))
+#    model 5: HT = bh + exp(B1+B2/(DBH+B3))
+#    model 6: HT = bh + B1*(1.0-exp(B2*DBH^B3))    # Weibull
+
+model = model type number (1-6)
+model.formula = model equation (character)
+bh = breast height (4.5 feet)
+WT = weight variable
+SPCD = FIA species code
+nobs = number of observations
+B1, B2 and B3 = fitted parameters
+seB1, seB2 and seB3 = parameter standard errors
+pB1, pB2 and pB3 = parameter p-values
+RMSE = root mean square error for fit
+AIC 
+meanBIAS = mean bias for fit
+meanAbsBIAS = mean absolute bias for fit
+meanLowDBHRes = mean residual for lower third of DBH distribution for species 
+meanMidDBHRes = mean residual for middle third of DBH distribution for species 
+meanUppDBHRes = mean residual for upper third of DBH distribution for species 
+B3_test -- test of B3 parameter for model 2 (Ho: B3 = -1) and model 5 (Ho: B3 = 1) (alpha = 0.05)
+ierr = fit error and warnings
+#  0  fit converged
+#  1  too few observations (< minOBS)
+#  2  did not converge or other issues (e.g. singularity)
+#  3  unreasonable (wrong sign) parameters
+#  4  some parameters are not significant(Ho: b=0, alpha 0.05)
+notes = fit notes (e.g. nls errors)
+
+Code
+
+R markdown code for creating report
+FIA_HTDBH_modeling_20260506.RMD
+
+R code for model fitting and testing summaries
+FIA_HTDBH_model_fitting.R
+
+
+
+
