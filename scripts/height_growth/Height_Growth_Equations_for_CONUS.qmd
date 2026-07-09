@@ -36,7 +36,9 @@ rds_path <- "F:/Projects/FVS Remodel/fvs_remodeling/rds/"
 gis_path <- "F:/Projects/FVS Remodel/gis/"
 
 species <- readRDS( file=paste0(rds_path,"species.RDS") )
-trees <- readRDS( file=paste0(rds_path,"tree_hg_subset.RDS") )
+trees <- readRDS( file=paste0(rds_path,"tree_hg_subset.RDS") )  |>
+                        mutate( pc_1 = 0.252*DD_0 + 0.002*TD + -0.035*PPT_sm + 0.967*DD_18,
+                                pc_2 = 0.882*DD_0 + 0.015*TD + 0.42*PPT_sm + -0.215*DD_18 )
 
 # observation threshold
 min_obs <- 5000
@@ -45,7 +47,7 @@ min_obs <- 5000
 
 ## Data
 
-We took the FIA height growth data, filtered out FIA plot locations with missing EPA L3 Codes, and where the diameter at the end of the 5-year or greater measurement interval was less than the starting diameter. This left `r nrow(trees)` growth observations.
+We took the FIA height growth data, filtered out FIA plot locations where the diameter at the end of the 5-year or greater measurement interval was less than the starting diameter. This left `r nrow(trees)` growth observations.
 
 The observations are distributed among species codes as follows (pre:
 
@@ -71,8 +73,8 @@ knitr::kable( trees |>
 #| warning: false
 
 est_hg <- function( periods, ht, cr, cr2, ccfl, ccfl2, cch, cch2,
-                    max_height, elev, td, emt,
-                          b1, b2, b3, b4, b5, b6, b7, b8 )
+                    max_height, pc_1, pc_2,
+                          b1, b2, b3, b4, b5, b6, b7 )
 
 {
     htc <- ht
@@ -86,7 +88,7 @@ est_hg <- function( periods, ht, cr, cr2, ccfl, ccfl2, cch, cch2,
     for( i in 1:max(periods) )
     {
         htc <- htc + ifelse( i <= periods, 
-                max_height * b1 * b2 * (crc)^b3 * exp(-b1*htc - b4*ccflc -b8*cchc^0.5- b5*elev + b6*td^0.5 + b7*emt ) *                  
+                max_height * b1 * b2 * (crc)^b3 * exp(-b1*htc - b4*ccflc - b5*cchc^0.5 + b6*pc_1 + b7*pc_2 ) *                  
                   (1.0-exp(-b1*htc))^(b2-1.0) , 0.0 )
 
         crc <- crc + ifelse( i <= periods, crg, 0.0 )
@@ -104,17 +106,24 @@ est_hg <- function( periods, ht, cr, cr2, ccfl, ccfl2, cch, cch2,
 
 We fit the equation:
 
-$$\Delta ht = ht_{max} \beta_1 \beta_2 cr^{\beta_3} e^{(-\beta_1 ht -\beta_4 ccfl -\beta_8 cch^{0.5} - \beta_5 elev + \beta_6 * TD^{0.5} + \beta_7 EMT )} (1 - e^{-\beta_1 ht})^{(\beta_2-1)}$$ {#eq-hg}
+$$\Delta ht = ht_{max} \beta_1 \beta_2 cr^{\beta_3} e^{(-\beta_1 ht -\beta_4 ccfl -\beta_5 cch^{0.5} - \beta_6 pc_1 + \beta_7 * pc_2 )} (1 - e^{-\beta_1 ht})^{(\beta_2-1)}$$ {#eq-hg}
 
 to the all `r nrow(trees)` growth observations, estimating $\beta_0$ through $\beta_7$. Where:
 
--   $ht$ = total height (feet)
--   $cr$ = crown ratio (fraction of total height)
--   $ccfl$ = crown competition factor in larger trees ($feet^2/acre$)
--   $cch$ = crown closure at tree tip (fraction of acre)
--   $elev$ = elevation above sea level (feet)
--   $TD$ = temperature difference between minimum and maximum ($^\circ C$)
--   $EMT$ = extreme minimum temperature ($^\circ C$)
+- $ht$ = total height (feet)
+- $cr$ = crown ratio (fraction of total height)
+- $ccfl$ = crown competition factor in larger trees ($feet^2/acre$)
+- $cch$ = crown closure at tree tip (fraction of acre)
+- $elev$ = elevation above sea level (feet)
+- $TD$ = temperature difference between minimum and maximum ($^\circ C$)
+- $EMT$ = extreme minimum temperature ($^\circ C$)
+- $pc_1 = 0.252 DD_0 + 0.002 TD - 0.035 PPT_{sm} + 0.967 DD_{18}$
+- $pc_2 = 0.882 DD_0 + 0.015 TD + 0.42 PPT_{sm} - 0.215 DD_{18}$ 
+- $DD_0$ = growing degree days above $0^{\circ}C$
+- $DD_{18}$ = growing degree days above $18^{\circ}C$
+- $TD$ = Temperature Difference (difference between the mean temperature of the warmest month (MWMT) and the mean temperature of the coldest month (MCMT)
+- $PPT_{sm}$ = summer precipitation (mm)
+
 
 $ht_{max}$ was estimated by finding the maximum height observed in the data set for each species.
 
@@ -125,6 +134,7 @@ $ht_{max}$ was estimated by finding the maximum height observed in the data set 
 #| warning: false
 #| include: false
 
+# 72 90
 fit_stats <- NULL
 hg_residuals <- NULL
 
@@ -144,32 +154,32 @@ for( i in 1:nrow(species) )
         hg_fit <- minpack.lm::nlsLM( d$endACTUALHT ~ est_hg( d$endGROWYR-d$startGROWYR, 
                                       d$startACTUALHT, d$startCR, d$endCR, d$startCCFL, d$endCCFL, 
                                       d$startCCH, d$endCCH,
-                                      max_height, d$ELEV, d$TD, d$EMT,
-                                      b1, b2, b3, b4, b5, b6, b7, b8 ), d, 
-                       start=c( b1 = 0.0108871, 
-                                b2 = 1.6261262, 
-                                b3 = 0.4573120,
-                                b4 = 0.0014822,
-                                b5 = 0.0001514,
-                                b6 = 0.2736003,
-                                b7 = 0.0326502,
-                                b8 = 0.866
+                                      max_height, d$pc_1, d$pc_2,
+                                      b1, b2, b3, b4, b5, b6, b7 ), d, 
+                       start=c( b1 = 0.02696685, 
+                                b2 = 1.710672, 
+                                b3 = 2.532616e-07,
+                                b4 = -0.0008249658,
+                                b5 = 0.8803478,
+                                b6 = 0.000843731,
+                                b7 = 0.003965964
                                 ), trace=T )
       
       p2 <-hg_fit$m$getPars() 
       d$hg_hat <- est_hg( d$endGROWYR-d$startGROWYR, 
                           d$startACTUALHT, d$startCR, d$endCR, d$startCCFL, d$endCCFL, 
-                          d$startCCH, d$endCCH, max_height, d$ELEV, d$TD, d$EMT,
-                          p2[1], p2[2], p2[3], p2[4], p2[5], p2[6], p2[7], p2[8] )
+                          d$startCCH, d$endCCH, max_height, d$pc_1, d$pc_2,
+                          p2[1], p2[2], p2[3], p2[4], p2[5], p2[6], p2[7] )
       d$hg_res <- (d$hg_hat - d$endACTUALHT)/(d$endGROWYR-d$startGROWYR)
       
       hg_residuals <- rbind( hg_residuals, d |> 
                                select( SPCD, startDIA, startACTUALHT, startCR, startCCFL, startCCH, ELEV, TD, EMT, ASPECT, SLOPE,
+                                       pc_1, pc_2,
                                        State, STATECD, COUNTYCD, UNITCD, LON, LAT, PLOT, TREE, SICOND, startOWNCD, hg_res, hg_hat, -path ) |>
                                mutate( max_height = max_height ))
       
       o <- data.frame( spcd=species$SPCD[i], n=nrow(d), Common_Name=species$CommonName[i],
-                 B0=max_height, B1=p2[1], B2=p2[2], B3=p2[3], B4=p2[4], B5=p2[5], B6=p2[6], B7=p2[7], B8=p2[8],
+                 B0=max_height, B1=p2[1], B2=p2[2], B3=p2[3], B4=p2[4], B5=p2[5], B6=p2[6], B7=p2[7],
                  AIC=AIC(hg_fit), isConv=hg_fit$convInfo$isConv,
                  RSS=hg_fit$m$deviance() )
       fit_stats <- rbind( fit_stats, o )
@@ -212,13 +222,11 @@ fit_stats2 %>% ggplot( aes( type, B3 )) + geom_violin(draw_quantiles=c(0.25,0.5,
 fit_stats2 %>% ggplot( aes( type, B4 )) + geom_violin(draw_quantiles=c(0.25,0.5,0.75)) + xlab("") +
     ggtitle( "CCFL Effects")
 fit_stats2 %>% ggplot( aes( type, B5 )) + geom_violin(draw_quantiles=c(0.25,0.5,0.75)) + xlab("")+
-    ggtitle( "Elevation Effects") 
+    ggtitle( "CCH Effects") 
 fit_stats2 %>% ggplot( aes( type, B6 )) + geom_violin(draw_quantiles=c(0.25,0.5,0.75)) + xlab("")+
-    ggtitle( "Temperature Difference Effects") 
+    ggtitle( "PC1 Effects") 
 fit_stats2 %>% ggplot( aes( type, B7 )) + geom_violin(draw_quantiles=c(0.25,0.5,0.75)) + xlab("")+
-    ggtitle( "Extreme Minimum Temperature Effects") 
-fit_stats2 %>% ggplot( aes( type, B8 )) + geom_violin(draw_quantiles=c(0.25,0.5,0.75)) + xlab("")+
-    ggtitle( "Crown Closure at Tree Tip Effects") 
+    ggtitle( "PC2 Effects") 
 
 
 fit_stats2 %>% mutate( MSE=RSS/n ) %>% ggplot( aes( type, MSE )) + geom_boxplot() + xlab("") + ylab("MSE (inches)")
@@ -278,4 +286,109 @@ ggplot(hc_data$segments, aes(x = x, y = y, xend = xend, yend = yend)) +
 # knitr::kable( fit_stats2 |> filter( B7 < 0 ) |> inner_join( species, by=c("spcd"="SPCD" ) ) |> select( spcd, Common_Name ),
 #               row.names = F, col.names = c("FIA Species Code", "Common Name"),
 #               caption="Species with Negative Extreme Minimum Temperature Parameter" )
+```
+
+### Comparison with Previous Model using Elevation and Extreme Minimum Temperature
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+# get previous estimates
+fit_stats_elev_emt <- readRDS( file=paste0(rds_path,"hg_parms_elev_emt.RDS") )
+
+fit_stats |> inner_join( fit_stats_elev_emt, by="spcd", suffix=c(".pc",".elevemt")) |>
+  ggplot( aes( AIC.pc, AIC.elevemt )) + geom_point() + geom_abline( intercept = 0, slope = 1 ) +
+  xlab( "AIC Model with Principal Components" ) + ylab( "AIC Model with ELEV and EMT ") +
+  ggtitle( "Comparison of AIC between Model Versions" ) 
+
+```
+
+### Residual Analysis
+
+```{r}
+#| label: residual_analysis
+#| echo: false
+#| message: false
+#| warning: false
+
+
+fit_stats3 <- fit_stats |>
+  inner_join( species |> select( SPCD, ScientificName ), by=c("spcd"="SPCD") )
+
+hg_res <- trees |> 
+  select( SPCD, startACTUALHT, endACTUALHT, startCR, endCR, startCCH, endCCH, startCCFL, endCCFL, pc_1, pc_2, SICOND, startGROWYR, endGROWYR ) |>
+  inner_join( fit_stats3, by=c("SPCD"="spcd") ) |>
+  mutate( hg_hat = est_hg( endGROWYR-startGROWYR, 
+                           startACTUALHT, startCR, endCR, startCCFL, endCCFL, 
+                           startCCH, endCCH, B0, pc_1, pc_2,
+                           B1, B2, B3, B4, B5, B6, B7 ), 
+          hg_res = (hg_hat - endACTUALHT)/(endGROWYR-startGROWYR) )
+
+n_spp <- length( unique( hg_res$SPCD ) )
+
+hg_res |> ggplot( aes( startACTUALHT, hg_res, color=as.factor(SPCD), group=as.factor(SPCD) ) ) + 
+  geom_point( alpha = 0.15 ) +
+  geom_smooth() + 
+  geom_abline( intercept = 0, slope = 0 ) +
+  xlab( "Initial Height (feet)" ) + ylab( "Height Growth Residual (ft/yr) (pred-act)") +
+  theme(legend.position = "none") +
+  ylim( c( -10, 10 ) ) +
+  ggtitle( paste("Height Growth Residuals for", n_spp, "Species" ), subtitle = "Outliers Removed" )
+
+hg_res |> ggplot( aes( startCCFL, hg_res, color=as.factor(SPCD), group=as.factor(SPCD) ) ) + 
+  geom_point( alpha = 0.15 ) +
+  geom_smooth() + 
+  geom_abline( intercept = 0, slope = 0 ) +
+  xlab( "Initial Crown Competition Factor in Larger Trees" ) + ylab( "Height Growth Residual (ft/yr) (pred-act)") +
+  theme(legend.position = "none") +
+  ylim( c( -10, 10 ) ) +
+  ggtitle( paste("Height Growth Residuals for", n_spp, "Species" ), subtitle = "Outliers Removed" )
+
+hg_res |> ggplot( aes( startCCH, hg_res, color=as.factor(SPCD), group=as.factor(SPCD) ) ) + 
+  geom_point( alpha = 0.15 ) +
+  geom_smooth() + 
+  geom_abline( intercept = 0, slope = 0 ) +
+  xlab( "Initial Crown Closure at Tree Tip" ) + ylab( "Height Growth Residual (ft/yr) (pred-act)") +
+  theme(legend.position = "none") +
+  ylim( c( -10, 10 ) ) +
+  ggtitle( paste("Height Growth Residuals for", n_spp, "Species" ), subtitle = "Outliers Removed" )
+
+hg_res |> ggplot( aes( startCR, hg_res, color=as.factor(SPCD), group=as.factor(SPCD) ) ) + 
+  geom_point( alpha = 0.15 ) +
+  geom_smooth() + 
+  geom_abline( intercept = 0, slope = 0 ) +
+  xlab( "Initial Crown Ratio (fraction of total height)" ) + ylab( "Height Growth Residual (ft/yr) (pred-act)") +
+  theme(legend.position = "none") +
+  ylim( c( -10, 10 ) ) +
+  ggtitle( paste("Height Growth Residuals for", n_spp, "Species" ), subtitle = "Outliers Removed" )
+
+hg_res |> ggplot( aes( pc_1, hg_res, color=as.factor(SPCD), group=as.factor(SPCD) ) ) + 
+  geom_point( alpha = 0.15 ) +
+  geom_smooth() + 
+  geom_abline( intercept = 0, slope = 0 ) +
+  xlab( "First Principal Component" ) + ylab( "Height Growth Residual (ft/yr) (pred-act)") +
+  theme(legend.position = "none") +
+  ylim( c( -10, 10 ) ) +
+  ggtitle( paste("Height Growth Residuals for", n_spp, "Species" ), subtitle = "Outliers Removed" )
+
+hg_res |> ggplot( aes( pc_2, hg_res, color=as.factor(SPCD), group=as.factor(SPCD) ) ) + 
+  geom_point( alpha = 0.15 ) +
+  geom_smooth() + 
+  geom_abline( intercept = 0, slope = 0 ) +
+  xlab( "Second Principal Component" ) + ylab( "Height Growth Residual (ft/yr) (pred-act)") +
+  theme(legend.position = "none") +
+  ylim( c( -10, 10 ) ) +
+  ggtitle( paste("Height Growth Residuals for", n_spp, "Species" ), subtitle = "Outliers Removed" )
+
+hg_res |> ggplot( aes( SICOND, hg_res, color=as.factor(SPCD), group=as.factor(SPCD) ) ) + 
+  geom_point( alpha = 0.15 ) +
+  geom_smooth() + 
+  geom_abline( intercept = 0, slope = 0 ) +
+  xlab( "Site Index (feet)" ) + ylab( "Height Growth Residual (ft/yr) (pred-act)") +
+  theme(legend.position = "none") +
+  ylim( c( -10, 10 ) ) +
+  ggtitle( paste("Height Growth Residuals for", n_spp, "Species" ), subtitle = "Outliers Removed" )
+
 ```
