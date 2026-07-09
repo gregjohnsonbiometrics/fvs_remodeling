@@ -38,7 +38,9 @@ gis_path <- "F:/Projects/FVS Remodel/gis/"
 unzip_path <- "F:/Projects/FVS Remodel/gis/Normal_1991_2020_bioclim"
 
 species <- readRDS( file=paste0(rds_path,"species.RDS") )
-trees <- readRDS( file=paste0(rds_path,"tree_dg_subset.RDS") ) 
+trees <- readRDS( file=paste0(rds_path,"tree_dg_subset.RDS") ) |>
+                        mutate( pc_1 = 0.252*DD_0 + 0.002*TD + -0.035*PPT_sm + 0.967*DD_18,
+                                pc_2 = 0.882*DD_0 + 0.015*TD + 0.42*PPT_sm + -0.215*DD_18 )
 
 # observation threshold
 min_obs <- 5000
@@ -46,14 +48,14 @@ min_obs <- 5000
 ```
 
 ```{r}
-#| label: fit_diameter_growth
-#| eval: false
+#| label: diameter_growth_function
 #| message: false
 #| warning: false
 #| include: false
 
 
-est_dg <- function( n, dbh0, bal0, bal1, cr0, cr1, ht0, ht1, elev, emt, B0, B1, B2, B3, B4, B5, B6 )
+
+est_dg <- function( n, dbh0, bal0, bal1, cr0, cr1, ht0, ht1, pc_1, pc_2, B0, B1, B2, B3, B4, B5, B6 )
 
 {
     dht <- (ht1 - ht0)/n
@@ -72,8 +74,8 @@ est_dg <- function( n, dbh0, bal0, bal1, cr0, cr1, ht0, ht1, elev, emt, B0, B1, 
       dg_hat <- exp( B0 + 
                      B1 * log( (cdbh+1)^2/(ccr*cht+1.0)^B3 ) +
                      B2 * cbal^B4/( log(cdbh+2.7) ) +
-                     B5 * elev + 
-                     B6 * emt ) 
+                     B5 * pc_1 +
+                     B6 * pc_2 ) 
       
       cdbh <- cdbh + ifelse( i <= n, dg_hat, 0 )
       cbal <- cbal + ifelse( i <= n, dbal, 0 )
@@ -83,8 +85,15 @@ est_dg <- function( n, dbh0, bal0, bal1, cr0, cr1, ht0, ht1, elev, emt, B0, B1, 
     
     return( cdbh )
 }
+```
 
 
+```{r}
+#| label: fit_species
+#| eval: false
+#| message: false
+#| warning: false
+#| include: false
 # iterate through species list
 
 fit_stats <- NULL
@@ -100,8 +109,11 @@ for( i in 1:nrow(species) )
         {
 
             dg_fit <- minpack.lm::nlsLM( d$endDIA ~ est_dg( d$endGROWYR-d$startGROWYR, 
-                               d$startDIA, d$startBAL, d$endBAL, d$startCR, d$endCR, d$startHT, d$endHT,  
-                               d$ELEV, d$EMT,
+                               d$startDIA, 
+                               d$startBAL, d$endBAL, 
+                               d$startCR, d$endCR, 
+                               d$startHT, d$endHT,  
+                               d$pc_1, d$pc_2,
                                b0, b1, b2, b3, b4, b5, b6 ), d, 
                  start=c( b0 = -1.29,     
                           b1 = -0.5836578, 
@@ -127,36 +139,53 @@ for( i in 1:nrow(species) )
     }
 }
 
-saveRDS( fit_stats, file=paste0(rds_path,"dg_parms_elev_emt.RDS") )
+saveRDS( fit_stats, file=paste0(rds_path,"dg_parms.RDS") )
 
 
 ```
 
 ## Preliminary CONUS-wide Diameter Growth Equation
 
+### Data and Model Form
+
 ```{r}
 #| include: false
 #| 
-fit_stats <- readRDS( file=paste0(rds_path,"dg_parms_elev_emt.RDS") )
+fit_stats <- readRDS( file=paste0(rds_path,"dg_parms.RDS") )
 
 ```
 
-We built a data set from Forest Inventory and Analysis (FIA) remeasurement data, filtering out observations with missing values for diameter at breast height (`dbh`), basal area in larger trees (`bal`), crown ratio (`cr`), total height (`ht`), site index (`si`), elevation above sea level (`elev`), extreme minimum temperature (`EMT`), and remeasurement intervals less than 5 years. We also restricted the data to species with $\ge$ `r min_obs` observations.
+We built a data set from Forest Inventory and Analysis (FIA) remeasurement data, filtering out observations with missing values for diameter at breast height (`dbh`), basal area in larger trees (`bal`), crown ratio (`cr`), total height (`ht`), site index (`si`), and remeasurement intervals less than 5 years. We also restricted the data to species with $\ge$ `r min_obs` observations.
 
-The diameter growth equation fit to these data was:
+The first two principal components of environmental/climatic variables are used. They are:
 
-$$\Delta dbh = e^{(\beta_0 + \beta_1 log(\frac{(dbh+1)^2}{(cr * ht + 1)^{\beta_3}}) + \beta_2 \frac{bal^{\beta_4}}{dbh+2.7} + \beta_5 elev + \beta_6 EMT) }$$ {#eq-dg}
+$$pc_1 = 0.252 DD_0 + 0.002 TD - 0.035 PPT_{sm} + 0.967 DD_{18} $$ {#eq-PC1}
+
+$$pc_2 = 0.882 DD_0 + 0.015 TD + 0.42 PPT_{sm} - 0.215 DD_{18} $$ {#eq-PC2}
 
 where:
 
--   $dbh$ = diameter at breast height (inches)
--   $cr$ = crown ratio (fraction of total height)
--   $ht$ = total height (feet)
--   $bal$ = basal area in larger trees ($feet^2/acre$)
--   $elev$ = elevation above sea level (feet)
--   $EMT$ = extreme minimum temperature ($^\circ C$)
+- $DD_0$ = growing degree days above $0^{\circ}C$
+- $DD_{18}$ = growing degree days above $18^{\circ}C$
+- $TD$ = Temperature Difference (difference between the mean temperature of the warmest month (MWMT) and the mean temperature of the coldest month (MCMT)
+- $PPT_{sm}$ = summer precipitation (mm)
+
+The diameter growth equation fit to these data is:
+
+$$\Delta dbh = e^{(\beta_0 + \beta_1 log(\frac{(dbh+1)^{\beta_3}}{(cr * ht + 1)^{\beta_4}}) + \beta_2 \frac{bal^{\beta_5}}{dbh+2.7} + \beta_5 pc_1 + \beta_6 pc_2 }$$ {#eq-dg}
+
+where:
+
+- $dbh$ = diameter at breast height (inches)
+- $cr$ = crown ratio (fraction of total height)
+- $ht$ = total height (feet)
+- $bal$ = basal area in larger trees ($feet^2/acre$)
+- $pc_1$ = environmental/climate principal component 1
+- $pc_2$ = environmental/climate principal component 2
 
 @eq-dg was fit to each qualifying species using an integrated fitting approach and errors minimized were ending `dbh`. `r nrow(fit_stats)` species equations were estimated. Sample sizes ranged from `r min(fit_stats$n)` to `r max(fit_stats$n)` observations.
+
+### Fitting Results
 
 The graphs below show the range of parameter estimates divided into Conifer and Hardwood groups. The parameter estimates are remarkable stable across species.
 
@@ -179,9 +208,9 @@ fit_stats2 %>% ggplot( aes( type, B3 )) + geom_violin(draw_quantiles=c(0.25,0.5,
 fit_stats2 %>% ggplot( aes( type, B4 )) + geom_violin(draw_quantiles=c(0.25,0.5,0.75)) + xlab("") +
     ggtitle( "Adjusts Basal Area in Larger Trees Effects" )
 fit_stats2 %>% ggplot( aes( type, B5 )) + geom_violin(draw_quantiles=c(0.25,0.5,0.75)) + xlab("")+
-    ggtitle( "Elevation above Sea Level" ) 
+    ggtitle( "PC_1" ) 
 fit_stats2 %>% ggplot( aes( type, B6 )) + geom_violin(draw_quantiles=c(0.25,0.5,0.75)) + xlab("")+
-    ggtitle( "Extreme Minimum Temperature Effects") 
+    ggtitle( "PC_2") 
 
 fit_stats2 %>% mutate( MSE=RSS/n ) %>% ggplot( aes( type, MSE )) + geom_boxplot() + xlab("") + ylab("MSE (inches)")
 
@@ -223,11 +252,94 @@ ggplot(hc_data$segments, aes(x = x, y = y, xend = xend, yend = yend)) +
     ggtitle( "FIA Species Clusters by Diameter Growth Parameter Estimates") +
     theme( legend.position = "none" )
 
-knitr::kable( fit_stats2 |> filter( B3 < 0 ) |> inner_join( species, by=c("spcd"="SPCD" ) ) |> select( spcd, Common_Name ),
-              row.names = F, col.names = c("FIA Species Code", "Common Name"),
-              caption="Species with Negative Summer Precipitation Parameter" )
-
-knitr::kable( fit_stats2 |> filter( B6 < 0 ) |> inner_join( species, by=c("spcd"="SPCD" ) ) |> select( spcd, Common_Name ),
-              row.names = F, col.names = c("FIA Species Code", "Common Name"),
-              caption="Species with Negative Extreme Minimum Temperature Parameter" )
+# knitr::kable( fit_stats2 |> filter( B3 < 0 ) |> inner_join( species, by=c("spcd"="SPCD" ) ) |> select( spcd, Common_Name ),
+#               row.names = F, col.names = c("FIA Species Code", "Common Name"),
+#               caption="Species with Negative Summer Precipitation Parameter" )
+# 
+# knitr::kable( fit_stats2 |> filter( B6 < 0 ) |> inner_join( species, by=c("spcd"="SPCD" ) ) |> select( spcd, Common_Name ),
+#               row.names = F, col.names = c("FIA Species Code", "Common Name"),
+#               caption="Species with Negative Extreme Minimum Temperature Parameter" )
 ```
+### Comparison with Previous Model using Elevation and Extreme Minimum Temperature
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+# get previous estimates
+fit_stats_elev_emt <- readRDS( file=paste0(rds_path,"dg_parms_elev_emt.RDS") )
+
+fit_stats |> inner_join( fit_stats_elev_emt, by="spcd", suffix=c(".pc",".elevemt")) |>
+  ggplot( aes( AIC.pc, AIC.elevemt )) + geom_point() + geom_abline( intercept = 0, slope = 1 ) +
+  xlab( "AIC Model with Principal Components" ) + ylab( "AIC Model with ELEV and EMT ") +
+  ggtitle( "Comparison of AIC between Model Versions" ) 
+
+```
+### Residual Analysis
+
+```{r}
+#| label: residual_analysis
+#| echo: false
+#| message: false
+#| warning: false
+
+
+fit_stats3 <- fit_stats |>
+  inner_join( species |> select( SPCD, ScientificName ), by=c("spcd"="SPCD") )
+
+dg_res <- trees |> 
+  select( SPCD, startDIA, endDIA, startCR, endCR, startBAL, endBAL, startHT, endHT, pc_1, pc_2, startGROWYR, endGROWYR ) |>
+  inner_join( fit_stats3, by=c("SPCD"="spcd") ) |>
+  mutate( dg_hat = est_dg( endGROWYR-startGROWYR, startDIA, startBAL, endBAL, startCR, endCR, startHT, endHT, pc_1, pc_2,
+                           B0, B1, B2, B3, B4, B5, B6 ), 
+          dg_res = (dg_hat - endDIA)/(endGROWYR-startGROWYR) )
+n_spp <- length( unique( dg_res$SPCD ) )
+
+dg_res |> ggplot( aes( startDIA, dg_res, color=as.factor(SPCD), group=as.factor(SPCD) ) ) + 
+  geom_point( alpha = 0.15 ) +
+  geom_smooth() + 
+  geom_abline( intercept = 0, slope = 0 ) +
+  xlab( "Initial Diameter (inches)" ) + ylab( "Diameter Growth Residual (in/yr) (pred-act)") +
+  theme(legend.position = "none") +
+  ylim( c( -2, 1 ) ) +
+  ggtitle( paste("Diameter Growth Residuals for", n_spp, "Species" ), subtitle = "Outliers Removed" )
+
+dg_res |> ggplot( aes( startBAL, dg_res, color=as.factor(SPCD), group=as.factor(SPCD) ) ) + 
+  geom_point( alpha = 0.15 ) +
+  geom_smooth() + 
+  geom_abline( intercept = 0, slope = 0 ) +
+  xlab( "Initial Basal Area in Larger Trees (ft^2/ac)" ) + ylab( "Diameter Growth Residual (in/yr) (pred-act)") +
+  theme(legend.position = "none") +
+  ylim( c( -2, 1 ) ) +
+  ggtitle( paste("Diameter Growth Residuals for", n_spp, "Species" ), subtitle = "Outliers Removed" )
+
+dg_res |> ggplot( aes( startCR, dg_res, color=as.factor(SPCD), group=as.factor(SPCD) ) ) + 
+  geom_point( alpha = 0.15 ) +
+  geom_smooth() + 
+  geom_abline( intercept = 0, slope = 0 ) +
+  xlab( "Initial Crown Ratio (fraction of total height)" ) + ylab( "Diameter Growth Residual (in/yr) (pred-act)") +
+  theme(legend.position = "none") +
+  ylim( c( -2, 1) ) +
+  ggtitle( paste("Diameter Growth Residuals for", n_spp, "Species" ), subtitle = "Outliers Removed" )
+
+dg_res |> ggplot( aes( pc_1, dg_res, color=as.factor(SPCD), group=as.factor(SPCD) ) ) + 
+  geom_point( alpha = 0.15 ) +
+  geom_smooth() + 
+  geom_abline( intercept = 0, slope = 0 ) +
+  xlab( "First Principal Component" ) + ylab( "Diameter Growth Residual (in/yr) (pred-act)") +
+  theme(legend.position = "none") +
+  ylim( c( -2, 1 ) ) +
+  ggtitle( paste("Diameter Growth Residuals for", n_spp, "Species" ), subtitle = "Outliers Removed" )
+
+dg_res |> ggplot( aes( pc_2, dg_res, color=as.factor(SPCD), group=as.factor(SPCD) ) ) + 
+  geom_point( alpha = 0.15 ) +
+  geom_smooth() + 
+  geom_abline( intercept = 0, slope = 0 ) +
+  xlab( "Second Principal Component" ) + ylab( "Diameter Growth Residual (in/yr) (pred-act)") +
+  theme(legend.position = "none") +
+  ylim( c( -2, 1 ) ) +
+  ggtitle( paste("Diameter Growth Residuals for", n_spp, "Species" ), subtitle = "Outliers Removed" )
+
+```
+
