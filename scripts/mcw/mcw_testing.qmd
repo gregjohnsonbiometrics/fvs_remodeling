@@ -281,6 +281,10 @@ knitr::kable( ratios |> mutate( b0adj=mcw_fit$m$getPars()[1] * mean_ratio ),
               caption = "Adjusted b0 Parameters" )
 
 
+parms <- ratios |> mutate( b0adj=mcw_fit$m$getPars()[1] * mean_ratio, b1 = mcw_fit$m$getPars()[2], b1a = mcw_fit$m$getPars()[3] ) |>
+    select( -mean_ratio )
+
+saveRDS( parms, file=paste0( rds_path, "mcs_parms.RDS") )
 ```
 ### Equation Performance
 
