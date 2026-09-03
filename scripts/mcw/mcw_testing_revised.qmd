@@ -246,7 +246,7 @@ for( s in unique( crown_width_data2$spcd ) )
     mcw_fit_spp <- quantreg::nlrq( cw_ft ~ b0 * dbh_in^(sb1+sb1a*(type=="Conifer")), 
                            data=d, 
                            tau = 0.95,
-                           start=c( b0 = 4 ), trace = F )  
+                           start=c( b0 = 2 ), trace = F )  
     spp_adj <- rbind( spp_adj, data.frame( spcd=s, b0=mcw_fit_spp$m$getPars()[1], b1=p[2], b1a=p[3] ) )
     spp_residuals <- rbind( spp_residuals, data.frame( spcd=s, mcw_res = -residuals( mcw_fit_spp, type="rho" ) ) )
 }
