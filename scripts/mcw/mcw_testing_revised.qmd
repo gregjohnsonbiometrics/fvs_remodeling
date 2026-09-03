@@ -1,0 +1,312 @@
+---
+title: "Maximum Crown Width Prediction Equation"
+author: "Greg Johnson, Aaron Weiskittel, David Marshall"
+date: today
+format: pdf
+editor: visual
+fig-format: png
+---
+
+
+```{r}
+#| label: prepare_data
+#| message: false
+#| warning: false
+#| include: false
+
+
+library( dplyr )
+library( ggplot2 )
+library( tidyverse)
+library( rpart)
+library( ggdendro )
+library( quantreg )
+
+reformat_nls <- function( nls_model_summary )
+{
+    mat_model <- nls_model_summary$coefficients
+    
+    dg_model <- as.data.frame(mat_model)
+    colnames(dg_model) <- c("Coef.", "Std. error", "t-stat.", "p")
+    
+    return( dg_model )
+}
+
+data_path <- "F:/Projects/FVS Remodel/data/"
+rds_path <- "F:/Projects/FVS Remodel/fvs_remodeling/rds/"
+gis_path <- "F:/Projects/FVS Remodel/gis/"
+
+species <- readRDS( file=paste0(rds_path,"species.RDS") )
+crown_width_data <- read.csv( paste0(data_path,"conus_crownwidth_tree_data.csv") ) |>
+    mutate( type=ifelse(spcd <=300, "Conifer","Hardwood") )
+
+crown_width_data1 <- crown_width_data |> filter( cr >= 0.5 )
+
+crown_width_data2 <- crown_width_data1 |>
+    group_by( spcd ) |> summarise( n=length(dbh_in) ) |> filter( n > 200 ) |>
+    inner_join( crown_width_data1, by="spcd" )
+
+```
+
+## Maximum Crown Width (`MCW`) Prediction
+
+### Data
+
+We used the Forest Health Monitoring data supplied by Aaron. It contains `r nrow(crown_width_data)` observations on 
+`r length(unique(crown_width_data$spcd))` species. Earlier analysis indicated that trees with crown ratios (`cr`) below 0.5 were suspect for determining maximum crown width. We filtered the data to exclude low crown ratios (`cr`s), yielding `r nrow(crown_width_data1)` observations on `r length(unique(crown_width_data1$spcd))` species. Additionally, we computed the sample size by species and filtered species with less than 200 observations, yielding `r nrow(crown_width_data2)` observations on `r length(unique(crown_width_data2$spcd))` species.
+
+Aaron and David previously determined that the 95th percentile of crown width (`cw`) was a useful approximation for maximum crown width (`mcw`).
+
+We split the analysis in two phases:
+
+1. Develop equation form (system) and initial parameter estimates by computing the 95th percentile `cw` for 1-inch diameter at breast height (`dbh`) classes for each species. We constrained the data set to include `dbh` classes with 10 or more observations.
+2. Fit the final model with quantile regression on the filtered data.
+
+
+### Phase 1
+#### Global Classed `mcw`
+
+Below is a graph of `mcw` (approximated using species-specific 1-inch `dbh` classes' 95th percentile `cw`). The graph illustrates that over all species, crown width tends toward an asymptote.
+
+```{r}
+#| label: graph_global_mcw
+#| echo: false
+#| message: false
+#| warning: false
+
+crown_width_data2 |> 
+    mutate( dbh_class=as.integer(dbh_in+0.5) ) |> 
+    group_by( spcd, common_name, dbh_class) |> 
+    summarize( cw_95=quantile(cw_ft,0.95) ) |>
+    ggplot( aes( dbh_class, cw_95 )) +
+    geom_point( ) + 
+    xlab( "DBH Class (1-inch bins)" ) + ylab( "95th percentile Crown Width (feet)" ) +
+    ggtitle( "Global (all species) Maximum Crown Width (feet)" ) +
+    geom_smooth()
+
+```
+
+We fit the filtered and classed data using @eq-gmcw:
+
+$$ cw_{95} = \beta_0 dbhc^{\beta_1}$$ {#eq-gmcw}
+
+where:
+
+* $cw_{95}$ - 95th percentile crown width (feet) for species-specific 1-inch `dbh` class 
+* $dbhc$ - 1-inch `dbh` class (inches)
+
+The fit statistics are shown below with a residual graph. The global fit does not show serious residual trends across `dbh`, but there is a significant difference between conifers and hardwoods.
+
+```{r}
+#| label: fit_global_mcw
+#| echo: false
+#| message: false
+#| warning: false
+
+d <- crown_width_data2 |> 
+    mutate( dbh_class=as.integer(dbh_in+0.5) ) |> 
+    group_by( type, spcd, common_name, dbh_class ) |> 
+    summarize( cw_95=quantile(cw_ft,0.95), n=length(dbh_in) ) |>
+    filter( n >= 10 )
+
+gmcw_fit <- nls( cw_95~b0*dbh_class^b1, data=d, start=c(b0=1.5,b1=0.5), trace=F)
+summary( gmcw_fit )
+
+d |> ggplot( aes( dbh_class, -residuals(gmcw_fit) ) ) + 
+    geom_point() + geom_abline( intercept = 0, slope=0.0 ) +
+    geom_smooth() +
+    theme(legend.position = "none") + 
+    ylim( c(-50,50) ) +
+    xlab( "DBH Class (1-inch bins)" ) + ylab( "95th percentile Crown Width Residual (pred-actual) (feet)" ) 
+
+d |> ggplot( aes( type, -residuals(gmcw_fit) ) ) +
+    geom_boxplot(notch=T, varwidth=T ) + geom_abline( intercept = 0, slope=0.0 ) +
+    xlab( "" ) + ylab( "95th percentile Crown Width Residual (pred-actual) (feet)" ) 
+
+    
+```
+\pagebreak
+
+#### Global Classed `mcw` with Conifer/Hardwood Differentiation
+
+We adjusted @eq-gmcw to add an indicator variable (`type` (1 if conifer, 0 if hardwood) to adjust $\beta_0$ and $\beta_1$. We found that the
+$\beta_0$ adjustment was not significant, so the resulting new equation is @eq-gmcw2:
+
+$$ cw_{95} = \beta_0 dbhc^{(\beta_1 + \beta_{1a}type)}$$ {#eq-gmcw2}
+
+where:
+
+* $cw_{95}$ - 95th percentile crown width (feet) for species-specific 1-inch `dbh` class 
+* $dbhc$ - 1-inch `dbh` class (inches)
+* $type$ - 1 if conifer, 0 if hardwood
+
+
+The fit statistics for @eq-gmcw2 are shown below with a residual graph. The new global fit does not show serious residual trends across `dbh`, and removes the difference between conifers and hardwoods. Looking at residuals at the species level reveals that there are species-level effects that need to be accounted for (see last graph in this section).
+
+
+```{r}
+#| label: fit_global_mcw2
+#| echo: false
+#| message: false
+#| warning: false
+
+d2 <- crown_width_data2 |>
+    mutate( dbh_class=as.integer(dbh_in+0.5) ) |> 
+    group_by( type, spcd, common_name, dbh_class) |> 
+    summarize( cw_95=quantile(cw_ft,0.95), n=length(dbh_in) ) |>
+    filter( n >= 10 )
+
+gmcw_fit2 <- minpack.lm::nlsLM( cw_95~(b0)*dbh_class^(b1+b1a*(type=="Conifer")), data=d2, 
+                                start=c(b0=6.375,b1=0.575682,b1a=-0.132076), trace=F )
+summary( gmcw_fit2 )
+
+
+d2 |> ggplot( aes( dbh_class, -residuals(gmcw_fit2) ) ) + 
+    geom_point() + geom_abline( intercept = 0, slope=0.0 ) +
+    geom_smooth() +
+    theme(legend.position = "none") + 
+    ylim( c(-50,50) ) +
+    xlab( "DBH Class (1-inch bins)" ) + ylab( "95th percentile CW Residual (pred-actual) (feet)" ) +
+    ggtitle( "MCW Equation using Species Type")
+
+d2 |> ggplot( aes( type, -residuals(gmcw_fit2) ) ) +
+    geom_boxplot(notch=T, varwidth=T ) + geom_abline( intercept = 0, slope=0.0 ) +
+    xlab( "" ) + ylab( "95th percentile CW Residual (pred-actual) (feet)" ) +
+    ggtitle( "MCW Equation using Species Type")
+
+
+d2 |> ggplot( aes( dbh_class, -residuals(gmcw_fit2), color=as.factor(spcd) ) ) + 
+    geom_point() + geom_abline( intercept = 0, slope=0.0 ) +
+    geom_smooth() +
+    ylim( c( -50,50 ) ) +
+    theme(legend.position = "none") +
+    xlab( "DBH Class (1-inch bins)" ) + ylab( "95th percentile CW Residual (pred-actual) (feet)" ) +
+    ggtitle( "MCW Equation using Species Type", subtitle="Colored by Species")
+    
+
+```
+
+
+
+\pagebreak
+
+### Phase 2 
+#### Parameter Estimates using Quantile Regression
+
+
+Using the filtered `cw` data we fit @eq-gmcw2 to the individual tree data using quantile regression with a $\tau$ = 0.95. The predictions from the quantile regression.
+
+The regression summary statistics for the quantile regression are shown below.
+
+```{r}
+#| label: fit_global_mcw4
+#| echo: false
+#| message: false
+#| warning: false
+
+
+# fit stage 1 model
+mcw_fit <- quantreg::nlrq( cw_ft ~ b0*dbh_in^(b1+b1a*(type=="Conifer")), 
+                           data=crown_width_data2, 
+                           tau = 0.95,
+                           start=c(b0=5.3247,b1=0.435,b1a=-0.1362), trace = F )
+
+summary( mcw_fit)
+
+crown_width_data2 |>
+    ggplot( aes( dbh_in, -residuals( mcw_fit, type="rho" ), color=as.factor(spcd) ) ) + 
+    geom_point() + geom_abline( intercept = 0, slope=0.0 ) +
+    geom_smooth() +
+    theme(legend.position = "none") +
+    xlab( "DBH (inches)" ) + ylab( "Maximum CW Residual (pred-actual) (feet)" ) +
+    ggtitle( "Quantile Regression MCW Equation")
+
+```
+#### species-level Parameter Estimates using Quantile Regression Estimates
+
+We took the quantile regression parameter estimates above and fit a $\beta_0$ estimate by species also using quantile regression with a $\tau$ = 0.95.
+
+The residual graph using the species adjustments appears below, followed by a table of final parameter estimates.
+
+
+```{r}
+#| label: fit_species_adjustment
+#| echo: false
+#| message: false
+#| warning: false
+
+p <- mcw_fit$m$getPars()
+spp_adj <- NULL
+spp_residuals <- NULL
+for( s in unique( crown_width_data2$spcd ) )
+{
+    d <- crown_width_data2 |> filter( spcd == s ) |>
+        mutate( sb1=p[2], sb1a=p[3] )
+
+    mcw_fit_spp <- quantreg::nlrq( cw_ft ~ b0 * dbh_in^(sb1+sb1a*(type=="Conifer")), 
+                           data=d, 
+                           tau = 0.95,
+                           start=c( b0 = 4 ), trace = F )  
+    spp_adj <- rbind( spp_adj, data.frame( spcd=s, b0=mcw_fit_spp$m$getPars()[1], b1=p[2], b1a=p[3] ) )
+    spp_residuals <- rbind( spp_residuals, data.frame( spcd=s, mcw_res = -residuals( mcw_fit_spp, type="rho" ) ) )
+}
+
+
+crown_width_data2 |>
+    mutate( mcw_res = spp_residuals$mcw_res ) |>
+    ggplot( aes( dbh_in, mcw_res, color=as.factor(spcd) ) ) + 
+    geom_point() + geom_abline( intercept = 0, slope=0.0 ) +
+    geom_smooth() +
+    theme(legend.position = "none") +
+    xlab( "DBH (inches)" ) + ylab( "Maximum CW Residual (pred-actual) (feet)" ) +
+    ggtitle( "Quantile Regression MCW Equation Adjusted for Species Effects")
+
+
+knitr::kable( spp_adj, caption="Quantile Regression Estimates by Species", row.names = F )
+
+saveRDS( spp_adj, file=paste0( rds_path, "mcw_parms.RDS") ) 
+```
+
+### Equation Performance
+
+Below is a graph of equation predictions by species, followed by a histogram of the percentage of all trees with `cr` > 0.5 that have `cw_ft` $\ge \hat{mcw}$. We would expect the percentages to cluster near 5% given our $\tau$ of 0.95.
+
+Five species fall far outside our expectations and have reasonably large sample sizes.
+
+
+```{r}
+#| label: equation_performance
+#| echo: false
+#| message: false
+#| warning: false
+
+crown_width_data2 |> 
+    inner_join( spp_adj, by="spcd" ) |>
+    ggplot( aes( dbh_in, b0*dbh_in^(b1+b1a*(type=="Conifer")), linetype = type, color=as.factor(spcd) ) ) + 
+    geom_line() + 
+    scale_linetype_manual(values = c("solid", "dotted")) +
+    theme(legend.position = "none") +
+    xlab( "DBH (inches)" ) + ylab( "Predicted Maximum Crown Width (feet)" ) +
+    ggtitle( "Species Adjusted MCW Equation",
+             subtitle="Colored by Species (Conifer=solid, Hardwood=Dotted)")
+
+compliance <- crown_width_data1 |> 
+    inner_join( spp_adj, by="spcd" ) |>
+    mutate( mcw_hat = b0*dbh_in^(b1+b1a*(type=="Conifer")), 
+            at_above_max = cw_ft >= mcw_hat ) |>
+    group_by( spcd ) |>
+    summarize( pct_at_mcw = mean(at_above_max) )
+
+compliance |> ggplot( aes( 100*pct_at_mcw ) ) + geom_histogram() +
+    facet_wrap( ~ifelse(spcd<300, "Conifer", "Hardwood") ) +
+    xlab( "Percentage of Trees for a Species At or Above Predicted MCW" )
+
+```
+## Conclusion
+
+The system developed above accounts for species-level variation in `cw` without sacrificing biologically meaningful equation performance. It is unbiased against the fitting data. Generally, hardwoods have wider crowns than conifers. 
+
+The system does produce some abhorrent predicted crown widths that should be investigated.
+
+
+
