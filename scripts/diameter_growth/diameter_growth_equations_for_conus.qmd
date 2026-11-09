@@ -87,7 +87,6 @@ est_dg <- function( n, dbh0, bal0, bal1, cr0, cr1, ht0, ht1, pc_1, pc_2, B0, B1,
 }
 ```
 
-
 ```{r}
 #| label: fit_species
 #| eval: false
@@ -260,6 +259,7 @@ ggplot(hc_data$segments, aes(x = x, y = y, xend = xend, yend = yend)) +
 #               row.names = F, col.names = c("FIA Species Code", "Common Name"),
 #               caption="Species with Negative Extreme Minimum Temperature Parameter" )
 ```
+
 ### Comparison with Previous Model using Elevation and Extreme Minimum Temperature
 
 ```{r}
@@ -276,6 +276,7 @@ fit_stats |> inner_join( fit_stats_elev_emt, by="spcd", suffix=c(".pc",".elevemt
   ggtitle( "Comparison of AIC between Model Versions" ) 
 
 ```
+
 ### Residual Analysis
 
 ```{r}
@@ -342,4 +343,3 @@ dg_res |> ggplot( aes( pc_2, dg_res, color=as.factor(SPCD), group=as.factor(SPCD
   ggtitle( paste("Diameter Growth Residuals for", n_spp, "Species" ), subtitle = "Outliers Removed" )
 
 ```
-
