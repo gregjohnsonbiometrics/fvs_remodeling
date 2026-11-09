@@ -18,19 +18,23 @@ Our objective is to grow any tree list from plots in CONUS in a single, variant-
 
 A [presentation](./pdfs/GJohnsonWMens2026-v2.pdf) delivered to the Western Mensurationists on June 23, 2026 summarizes our work to date.
 
-## Progress 
+## Progress
+
+### We rebuilt the fitting data set using the 2026 FIA database.
+
 ### We have preliminary equations developed for:
 - [Diameter Growth](./scripts/diameter_growth/)
 - [Height Growth](./scripts/height_growth/)
 - [Mortality](./scripts/mortality/)
-
-### and we have in development equations for:
 - [Change in Crown Length](./scripts/crown_change/)
-- [Height imputation](./scripts/height-diameter/)
 - [Maximum Crown Width](./scripts/mcw/)
 
+### and we have in development equations for:
+
+- [Height imputation](./scripts/height-diameter/)
+
+
 ### Work has not begun or is continuing on:
-- Crown dimensions imputation
 - Species mapping for species with low sample sizes
 - Improvement in site (location) effects
 - Refine height growth equation for consistency across species.
@@ -40,7 +44,6 @@ A [presentation](./pdfs/GJohnsonWMens2026-v2.pdf) delivered to the Western Mensu
    - ℎ𝑡
    - ℎ𝑡𝑙𝑐
    - 𝑑𝑏ℎ???
-   - 𝑙𝑐𝑤 (largest crown width)
    - Build a testing simulation framework and a growth verification system to evaluate bias and precision
       
 
