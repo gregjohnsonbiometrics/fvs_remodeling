@@ -23,6 +23,7 @@ A [presentation](./pdfs/GJohnsonWMens2026-v2.pdf) delivered to the Western Mensu
 ### We rebuilt the fitting data set using the 2026 FIA database.
 
 ### We have preliminary equations developed for:
+
 - [Diameter Growth](./scripts/diameter_growth/)
 - [Height Growth](./scripts/height_growth/)
 - [Mortality](./scripts/mortality/)
@@ -35,12 +36,12 @@ A [presentation](./pdfs/GJohnsonWMens2026-v2.pdf) delivered to the Western Mensu
 
 
 ### Work has not begun or is continuing on:
+
 - Species mapping for species with low sample sizes
 - Improvement in site (location) effects
 - Refine height growth equation for consistency across species.
 - Explore parameter clustering techniques (perhaps at the genus level) for species mapping.
 - Build (or rebuild) imputation equations for: 
-   - Δℎ𝑡𝑙𝑐
    - ℎ𝑡
    - ℎ𝑡𝑙𝑐
    - 𝑑𝑏ℎ???
