@@ -74,6 +74,7 @@ knitr::kable( tree_subset |> group_by( State ) |> summarize( n = length(X) ) |> 
 ```
 
 The observations are distributed among species as shown in @tbl-species.
+
 ```{r}
 #| label: tbl-species
 #| tbl-cap: Height to Live Crown Change Observations by Species
@@ -86,10 +87,9 @@ knitr::kable( tree_subset |> inner_join( species, by="SPCD") |> group_by( SPCD, 
 
 ```
 
-
 ## Proposed Model
 
-The model we propose to estimate $\Delta htlc$ is @eq-dhtlc. 
+The model we propose to estimate $\Delta htlc$ is @eq-dhtlc.
 
 $$ \Delta htlc = cl (1 - e^{(\beta_0 + \beta_1 \Delta ht + \beta_2 cch )}) $$ {#eq-dhtlc}
 
@@ -298,7 +298,6 @@ parms |> filter( n >= min_obs ) |> ggplot( aes( b2 ) ) + geom_histogram() +
 ```
 
 \pagebreak
-
 
 ## Height to Live Crown Residuals
 
