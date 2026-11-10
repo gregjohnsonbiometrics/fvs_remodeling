@@ -164,8 +164,8 @@ $$pc_2 = 0.882 DD_0 + 0.015 TD + 0.42 PPT_{sm} - 0.215 DD_{18} $$ {#eq-PC2}
 
 where:
 
-- $DD_0$ = growing degree days above $0^{\circ}C$
-- $DD_{18}$ = growing degree days above $18^{\circ}C$
+- $DD_0$ = growing degree days below $0^{\circ}C$
+- $DD_{18}$ = growing degree days below $18^{\circ}C$
 - $TD$ = Temperature Difference (difference between the mean temperature of the warmest month (MWMT) and the mean temperature of the coldest month (MCMT)
 - $PPT_{sm}$ = summer precipitation (mm)
 
